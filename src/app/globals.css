@@ -223,3 +223,10 @@ th button { display: inline-flex; gap: .5rem; align-items: center; }
   .report-preview-page:last-child { break-after:auto; }
   .report-preview-page tr { break-inside:avoid; }
 }
+
+/* Reconciliation dashboard */
+.tag-pass { color: #14624c; background: #e3f4ec; }
+.tag-review { color: #7a4a00; background: #fff3d6; }
+.tag-fail { color: #8f1d16; background: #fde7e5; }
+.reconcile-heading { display: flex; justify-content: space-between; align-items: center; gap: .8rem; flex-wrap: wrap; }
+.reconcile-heading h2 { display: flex; align-items: center; gap: .45rem; }

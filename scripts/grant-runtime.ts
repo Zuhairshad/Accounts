@@ -43,6 +43,7 @@ try {
     GRANT UPDATE ON inventory_adjustments, inventory_items, invoices TO ${quoted};
     GRANT SELECT ON report_settings, report_account_mappings, manual_register_rows, voucher_timeline TO ${quoted};
     GRANT INSERT, UPDATE ON report_settings, report_account_mappings, manual_register_rows, voucher_timeline TO ${quoted};
+    GRANT SELECT ON migration_backup_history TO ${quoted};
     GRANT DELETE ON company_members TO ${quoted};
   `);
   await client.query("COMMIT");

@@ -13,6 +13,7 @@ export const modules = [
   { title: "Balance sheet", reportPath: "balance-sheet", category: "Reports" }, { title: "Daily MIS", reportPath: "mis", category: "Reports" },
   { title: "Debtors report and aging", path: "debtors", category: "Reports" }, { title: "Creditors report and aging", path: "creditors", category: "Reports" }, { title: "Combined debtors and creditors", reportPath: "combined-parties", category: "Reports" },
   { title: "Company-wise and consolidated reports", reportPath: "company-wise", category: "Reports" },
+  { title: "Financial reconciliation", workspacePath: "reconciliation", category: "Reports" },
   { title: "Audit, revisions and restoration", path: "recycle", category: "Administration" }, { title: "Period close and approvals", path: "settings", category: "Administration" },
-  { title: "Migration and recovery history", category: "Administration" },
+  { title: "Migration and recovery history", adminPath: "/workspace/administration/operations", category: "Administration" },
 ];

@@ -14,7 +14,8 @@ export default async function Administration() {
   if (!actor) redirect("/workspace");
   const rows = await companyList(actor);
   return <div className="page-stack">
-    <div className="page-heading"><div><h1>Company directory</h1><p className="muted">Open a workspace or manage company access and settings.</p></div></div>
+    <div className="page-heading"><div><h1>Company directory</h1><p className="muted">Open a workspace or manage company access and settings.</p></div>
+      {actor.superAdmin && <Link className="text-link" href="/workspace/administration/operations">Migration and recovery history</Link>}</div>
     <section className="panel data-panel">
       <div className="panel-heading"><h2>Companies</h2></div>
       {rows.length ? <div className="table-scroll"><table><thead><tr><th>Company</th><th>Status</th><th>Actions</th></tr></thead><tbody>

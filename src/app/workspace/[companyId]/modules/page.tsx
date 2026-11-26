@@ -24,9 +24,13 @@ export default async function Modules({ params }: { params: Promise<{ companyId:
         ? <Link className="text-link" href={`/workspace/${companyId}/accounting/${module.path}`}>{module.title}</Link>
         : "tradePath" in module && module.tradePath && (module.tradePath !== "settings" || company.permissions.includes("manage_company"))
           ? <Link className="text-link" href={`/workspace/${companyId}/trade/${module.tradePath}`}>{module.title}</Link>
+          : "workspacePath" in module && module.workspacePath && company.permissions.includes("export")
+            ? <Link className="text-link" href={`/workspace/${companyId}/${module.workspacePath}`}>{module.title}</Link>
+          : "adminPath" in module && module.adminPath && actor.superAdmin
+            ? <Link className="text-link" href={module.adminPath}>{module.title}</Link>
           : "reportPath" in module && module.reportPath && (!["company-wise","combined-parties"].includes(module.reportPath) || company.permissions.includes("view_combined"))
             ? <Link className="text-link" href={`/workspace/${companyId}/reports/${module.reportPath}`}>{module.title}</Link>
-            : <><span>{module.title}</span><span className="tag">{"path" in module || "tradePath" in module || "reportPath" in module ? "Restricted" : "Planned"}</span></>}</li>)}</ul>
+            : <><span>{module.title}</span><span className="tag">Restricted</span></>}</li>)}</ul>
     </section>)}</div>
   </div>;
 }

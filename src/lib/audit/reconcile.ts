@@ -203,7 +203,7 @@ export async function reconcile(db: Reader, companyId: string, range: { from: st
         label: `${row.number} · ${row.day}`, href: voucherHref(row.documentId), amount: money(row.amount), note: row.reason,
       })).concat(causes.length && href ? [{ label: `${title} control ledger`, href, note: "Open the control ledger" }] : []),
       `Expected is the ${title} control balance as of ${to}; actual is the sum of ${partyType} balances shown in party reports.` +
-      (causes.length ? ` Link unlinked lines through the legacy party-link review (${base}/accounting/repair).` : "")));
+      (causes.length ? " Link unlinked lines through Legacy party voucher linking." : "")));
   }
 
   /* 6. Inventory control account agrees with the dated stock subledger, item by item. */

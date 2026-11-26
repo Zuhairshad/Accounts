@@ -1,0 +1,20 @@
+{
+  "profile": "UNVERIFIED TEMPLATE - replace every table and column name with the names reported by `inspect` for the real azam_accounts_v2.db",
+  "fiscalYearStartMonth": 7,
+  "tables": {
+    "companies": { "table": "companies", "columns": { "id": "id", "name": "name", "active": "is_active" } },
+    "accounts": { "table": "accounts", "columns": { "id": "id", "companyId": "company_id", "code": "code", "name": "name", "type": "type" } },
+    "parties": { "table": "parties", "columns": { "id": "id", "companyId": "company_id", "type": "party_type", "name": "name", "phone": "phone", "address": "address" } },
+    "items": { "table": "inventory", "columns": { "id": "id", "companyId": "company_id", "name": "item_name", "unit": "unit", "openingQty": "opening_qty", "openingRate": "opening_rate" } },
+    "vouchers": { "table": "vouchers", "columns": { "id": "id", "companyId": "company_id", "number": "voucher_no", "date": "date", "type": "voucher_type", "narration": "narration" } },
+    "voucherLines": { "table": "voucher_lines", "columns": { "id": "id", "voucherId": "voucher_id", "accountId": "account_id", "partyId": "party_id", "debit": "debit", "credit": "credit", "description": "description" } },
+    "invoiceRows": { "table": "invoices", "columns": { "id": "id", "companyId": "company_id", "number": "invoice_no", "date": "date", "type": "invoice_type", "partyId": "party_id", "itemId": "item_id", "qty": "qty", "rate": "rate", "amount": "amount", "voucherId": "voucher_id" } }
+  },
+  "values": {
+    "accountType": { "Asset": "asset", "Liability": "liability", "Equity": "equity", "Income": "income", "Expense": "expense" },
+    "partyType": { "Customer": "customer", "Supplier": "supplier" },
+    "voucherType": { "JV": "JV", "VR": "VR", "CPV": "CPV", "CRV": "CRV", "BPV": "BPV", "BRV": "BRV", "Sale": "sale", "Purchase": "purchase", "Opening": "opening" },
+    "invoiceType": { "Sale": "sale", "Purchase": "purchase" }
+  },
+  "companyTargets": {}
+}

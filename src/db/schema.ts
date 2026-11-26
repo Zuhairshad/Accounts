@@ -457,3 +457,26 @@ export const voucherTimeline = pgTable("voucher_timeline", {
   foreignKey({ columns: [t.companyId,t.documentId], foreignColumns: [voucherDocuments.companyId,voucherDocuments.id] }),
   foreignKey({ columns: [t.companyId,t.voucherId], foreignColumns: [vouchers.companyId,vouchers.id] }),
 ]);
+
+/** One row per committed legacy SQLite import. A source database fingerprint can be committed only once. */
+export const legacyImports = pgTable("legacy_imports", {
+  id: id(), sourceSha256: text("source_sha256").notNull(), mappingSha256: text("mapping_sha256").notNull(),
+  reportSha256: text("report_sha256").notNull(), status: text("status").default("committed").notNull(),
+  approvedBy: text("approved_by").notNull(), approval: jsonb("approval").notNull(), summary: jsonb("summary").notNull(),
+  createdAt: createdAt(), withdrawnAt: time("withdrawn_at"), withdrawReason: text("withdraw_reason"),
+}, (t) => [
+  uniqueIndex("legacy_import_once").on(t.sourceSha256).where(sql`${t.status} = 'committed'`),
+  check("legacy_import_status", sql`${t.status} in ('committed','withdrawn')`),
+  check("legacy_import_withdrawal", sql`(${t.status} = 'withdrawn') = (${t.withdrawnAt} is not null and ${t.withdrawReason} is not null)`),
+]);
+
+/** Legacy identifier to target identifier map. Quarantined legacy rows keep their raw source data and have no target. */
+export const legacyImportRecords = pgTable("legacy_import_records", {
+  importId: uuid("import_id").notNull().references(() => legacyImports.id), companyId: uuid("company_id").references(() => companies.id),
+  entity: text("entity").notNull(), legacyId: text("legacy_id").notNull(), targetId: uuid("target_id"),
+  outcome: text("outcome").notNull(), issue: text("issue"), source: jsonb("source"),
+}, (t) => [
+  primaryKey({ columns: [t.importId, t.entity, t.legacyId] }),
+  check("legacy_record_outcome", sql`${t.outcome} in ('imported','reused','quarantined','skipped')`),
+  check("legacy_record_target", sql`(${t.outcome} in ('imported','reused')) = (${t.targetId} is not null)`),
+]);

@@ -243,7 +243,7 @@ async function recalculate(
     sql`${invoices.payload} is not null AND (${invoices.status} = 'posted' OR ${invoices.id} = ${target.id})`));
   const adjustments = await tx.select().from(inventoryAdjustments).where(and(eq(inventoryAdjustments.companyId, companyId),
     sql`${inventoryAdjustments.payload} is not null AND (${inventoryAdjustments.status} = 'posted' OR ${inventoryAdjustments.id} = ${target.id})`));
-  const legacy = await tx.execute<{ id: string; created: Date; date: string; itemId: string; qty: string; value: string; lineNo: number }>(sql`
+  const legacy = await tx.execute<{ id: string; created: Date | string; date: string; itemId: string; qty: string; value: string; lineNo: number }>(sql`
     SELECT v.id,v.created_at AS created,m.accounting_date::text AS date,m.item_id AS "itemId",m.signed_quantity::text AS qty,
       m.signed_value::text AS value,m.line_no AS "lineNo" FROM stock_movements m
     JOIN effective_vouchers v ON v.company_id=m.company_id AND v.id=m.voucher_id
@@ -257,7 +257,8 @@ async function recalculate(
       ({ kind: "invoice" as const, id: row.id, createdAt: row.createdAt, input: invoiceSchema.parse(row.payload) })),
     ...adjustments.filter((row) => row.id !== target.id && row.status === "posted").map((row) =>
       ({ kind: "inventory_adjustment" as const, id: row.id, createdAt: row.createdAt, input: adjustmentSchema.parse(row.payload) })),
-    ...legacy.rows.map((row, index) => ({ kind: "legacy" as const, id: row.id, createdAt: row.created, input: { ...row, lineNo: index } })),
+    // Raw drizzle execute returns timestamptz as text; the replay orders events by Date.
+    ...legacy.rows.map((row, index) => ({ kind: "legacy" as const, id: row.id, createdAt: new Date(row.created), input: { ...row, lineNo: index } })),
   ];
   if (target.replacement) events.push(target.replacement);
   const allocationRows = await tx.execute<{ invoiceId: string; amount: string; date: string; endedOn: string | null }>(sql`

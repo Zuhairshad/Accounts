@@ -9,6 +9,8 @@ export default defineConfig({
   reporter: "list",
   use: {
     ...devices["Desktop Chrome"], baseURL,
+    // Keep a trace only when a test fails, to diagnose intermittent failures from CI artifacts.
+    trace: "retain-on-failure",
     launchOptions: process.env.AZAM_CHROMIUM_PATH ? { executablePath: process.env.AZAM_CHROMIUM_PATH } : {},
   },
   webServer: process.env.AZAM_E2E_BASE_URL ? undefined : {

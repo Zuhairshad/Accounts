@@ -130,7 +130,7 @@ export function WorkspaceShell({ actor, companies, manageable, showCombined, not
         </div>
         <div className="topbar-right">
           {selected?.active && <form className="global-search" action={`${base}/search`}><Search size={17} /><input aria-label="Global search" placeholder="Search company records" name="q" maxLength={100} required /></form>}
-          <button className="icon-button" type="button" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts" onClick={() => help.current?.showModal()}><Keyboard size={20} /></button>
+          <button className="icon-button shortcut-button" type="button" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts" onClick={() => help.current?.showModal()}><Keyboard size={20} /></button>
           <details className="top-menu"><summary className="icon-button" aria-label="Notifications"><Bell size={20} /></summary><div className="menu-panel">
             <strong>Notifications</strong>
             {notices.length ? <ul>{notices.map((notice) => <li key={notice.id}><span>{notice.description}</span><small>{notice.date}</small></li>)}</ul> : <p className="muted">No recent activity.</p>}

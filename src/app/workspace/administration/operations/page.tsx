@@ -20,7 +20,7 @@ export default async function Operations() {
   return <div className="page-stack">
     <div className="page-heading"><div><h1>Migration and recovery history</h1>
       <p className="muted">Independent backups, restore drills and legacy imports recorded by the operator tools. These operations run outside
-        the web application with separate credentials. See BACKUP_AND_RECOVERY.md and LEGACY_MIGRATION.md.</p></div></div>
+        the web application with separate credentials. See docs/BACKUP_AND_RECOVERY.md and docs/LEGACY_MIGRATION.md.</p></div></div>
     <section className="panel" role="status">
       {ageHours === null ? <p className="form-error">No successful independent backup has been recorded. Configure the scheduled backup workflow.</p>
         : ageHours > 26 ? <p className="form-error">The latest successful independent backup is {Math.floor(ageHours)} hours old. Check the backup workflow.</p>

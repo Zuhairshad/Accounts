@@ -1,3 +1,25 @@
+# Phase 5 implementation status
+
+Final audit, migration, testing and deployment preparation. Full detail: [FINAL_REPORT.md](FINAL_REPORT.md).
+
+- Added an authorized, read-only **Financial reconciliation** dashboard (14 independent checks with drill-down links).
+- Added the administrator **legacy SQLite migration utility** (inspect, dry run, approval-bound import, repeat-import
+  protection, quarantine, withdrawal, source/target reconciliation). Migration 0012.
+- Made audit and history tables append-only for every role (migration 0013); strengthened CSP and added HSTS.
+- Added the **scheduled encrypted backup workflow** the README already referenced but which did not exist, plus failure and
+  staleness alerts, a restore-drill script and a books fingerprint; executed a local encrypted restore drill.
+- Fixed a Phase 3 defect: any managed invoice failed once legacy stock movements existed (timestamp type mismatch).
+- Replaced the "Planned" migration/recovery module with a working Super Admin history page.
+- Added keyboard shortcuts, Enter-to-advance in entry tables, substring search-to-select for accounts, parties and items,
+  and the selected company's financial year in the top bar (responsive on phones).
+- Added 27 Vitest tests and 2 Playwright scenarios. From an empty database: 14 migrations, typecheck, 60/60 Vitest,
+  production build and 8/8 Playwright passed. One existing browser test (Day Book autosave) failed intermittently in 2 of
+  12 runs; its cause is not yet isolated (see FINAL_REPORT.md).
+
+Not done because infrastructure or inputs were not provided: production deployment, backup activation, a restore drill
+on real Neon, and import of the real legacy database (the original Python source and photographs were not available in
+this phase, so the legacy mapping template is unverified).
+
 # Phase 4 implementation status
 
 The report center and digital registers continue the same web application and PostgreSQL schema from Phases 1–3. Reports use the effective accounting journal, posted trade and inventory movements, and authorized company scope. Daily MIS supports account summaries, voucher drill-downs and historical voucher audit views. The Day Book and Sale / Purchase registers persist drafts and edits in PostgreSQL, retain a register audit trail and use explicit financial linkage. Reports provide browser print preview and PDF, Excel and CSV downloads. Both registers provide blank print templates based on their source photographs.

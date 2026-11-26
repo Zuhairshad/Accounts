@@ -34,3 +34,12 @@ Apply migrations `0006` through `0009` before reapplying the restricted database
 - Migration 0010 defines company-scoped account mappings, manual register rows and the voucher timeline. The register stores an optimistic version, lifecycle state, validated JSON payload, and at most one company-scoped voucher or invoice link. A source can be linked to only one manual row per company and register.
 - Migration 0011 backfills the timeline from voucher history and captures future document changes in the posting transaction. Historical official balances select the latest state recorded by the requested instant and use the original immutable journal lines.
 - The existing transaction revision, audit, idempotency and restoration tables record register mutations. Company report settings retain print layout and the Day Book perspective. Reapply the runtime grants after the migrations.
+
+## Phase 5 migrations
+
+- **0012** `legacy_imports` (one committed import per source SHA-256, approval and summary) and `legacy_import_records`
+  (legacy-to-target identifier map; quarantined rows keep their raw source JSON). Used only by the owner-role CLI.
+- **0013** `reject_history_change()` triggers make `audit_logs`, `transaction_revisions`, `voucher_timeline`,
+  `deleted_records`, `restoration_history` and `migration_backup_history` append-only for every role, and block TRUNCATE
+  of `audit_logs`.
+- Runtime grants add `SELECT` on `migration_backup_history` for the Super Admin history page. Reapply grants after migrating.

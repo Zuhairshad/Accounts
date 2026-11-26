@@ -92,6 +92,13 @@
       "when": 1795698196553,
       "tag": "0012_legacy_import",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1795698786190,
+      "tag": "0013_append_only_audit",
+      "breakpoints": true
     }
   ]
 }

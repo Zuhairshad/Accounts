@@ -1,33 +1,35 @@
-name: Encrypted independent database backup
+name: Encrypted database backup
 
+# Independent, encrypted daily copy of the production Neon database, in addition to Neon point-in-time recovery.
+# Nothing runs until the repository variable AZAM_BACKUP_ENABLED is "true" and the "backup" environment is configured.
 on:
-  workflow_dispatch:
   schedule:
-    - cron: "27 21 * * *"
+    - cron: "17 21 * * *" # 02:17 Asia/Karachi
+  workflow_dispatch:
 
 permissions:
   contents: read
-  id-token: write
+  id-token: write # AWS OIDC; no long-lived cloud keys are stored in GitHub
 
 concurrency:
-  group: production-database-backup
+  group: production-backup
   cancel-in-progress: false
 
 jobs:
   backup:
     if: vars.AZAM_BACKUP_ENABLED == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 40
     environment: backup
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
-      - uses: aws-actions/configure-aws-credentials@v5
+      - name: Install age
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq age
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-region: ${{ vars.AZAM_BACKUP_REGION }}
-          role-to-assume: ${{ vars.AZAM_BACKUP_UPLOAD_ROLE }}
-      - name: Install encryption tool
-        run: sudo apt-get update && sudo apt-get install -y age
-      - name: Encrypt and upload PostgreSQL backup
+          role-to-assume: ${{ vars.AZAM_BACKUP_AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AZAM_BACKUP_AWS_REGION }}
+      - name: Dump, encrypt and upload
         env:
           PGHOST: ${{ secrets.AZAM_BACKUP_PGHOST }}
           PGDATABASE: ${{ secrets.AZAM_BACKUP_PGDATABASE }}
@@ -36,3 +38,38 @@ jobs:
           BACKUP_AGE_RECIPIENT: ${{ vars.AZAM_BACKUP_AGE_RECIPIENT }}
           BACKUP_S3_PREFIX: ${{ vars.AZAM_BACKUP_S3_PREFIX }}
         run: bash scripts/backup.sh
+      - name: Alert on failure
+        if: failure()
+        env:
+          WEBHOOK: ${{ secrets.AZAM_ALERT_WEBHOOK_URL }}
+        run: |
+          # GitHub also emails failed scheduled runs to the workflow owner. The optional webhook (Slack/Teams compatible)
+          # carries no database details.
+          if [ -n "$WEBHOOK" ]; then
+            curl -fsS -m 20 -H 'Content-Type: application/json' \
+              --data "{\"text\":\"AZAM backup FAILED: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\"}" "$WEBHOOK"
+          fi
+
+  freshness:
+    # Independent of the backup job: fails if no successful upload has been recorded in the last 26 hours.
+    if: always() && vars.AZAM_BACKUP_ENABLED == 'true'
+    needs: backup
+    runs-on: ubuntu-latest
+    environment: backup
+    steps:
+      - name: Check latest recorded backup
+        env:
+          PGHOST: ${{ secrets.AZAM_BACKUP_PGHOST }}
+          PGDATABASE: ${{ secrets.AZAM_BACKUP_PGDATABASE }}
+          PGUSER: ${{ secrets.AZAM_BACKUP_PGUSER }}
+          PGPASSWORD: ${{ secrets.AZAM_BACKUP_PGPASSWORD }}
+          WEBHOOK: ${{ secrets.AZAM_ALERT_WEBHOOK_URL }}
+        run: |
+          age_hours=$(docker run --rm --env PGHOST --env PGDATABASE --env PGUSER --env PGPASSWORD --env PGSSLMODE=verify-full \
+            --env PGSSLROOTCERT=system postgres:18 psql --no-psqlrc -tA -c \
+            "SELECT coalesce(floor(extract(epoch FROM now()-max(created_at))/3600),99999) FROM migration_backup_history WHERE kind='backup' AND status='uploaded'")
+          echo "Latest successful backup: ${age_hours} hours ago"
+          if [ "$age_hours" -gt 26 ]; then
+            [ -n "$WEBHOOK" ] && curl -fsS -m 20 -H 'Content-Type: application/json' --data "{\"text\":\"AZAM backup is STALE (${age_hours}h)\"}" "$WEBHOOK" || true
+            exit 1
+          fi

@@ -230,3 +230,14 @@ th button { display: inline-flex; gap: .5rem; align-items: center; }
 .tag-fail { color: #8f1d16; background: #fde7e5; }
 .reconcile-heading { display: flex; justify-content: space-between; align-items: center; gap: .8rem; flex-wrap: wrap; }
 .reconcile-heading h2 { display: flex; align-items: center; gap: .45rem; }
+
+/* Phase 5 usability */
+.period-badge { display: inline-flex; align-items: center; gap: .4rem; border: 1px solid var(--line); border-radius: .5rem; padding: .3rem .55rem; color: #264575; font-size: .84rem; font-weight: 650; white-space: nowrap; }
+.period-badge small { color: var(--muted); font-weight: 500; margin-left: .3rem; }
+.period-closed { border-color: #f0b8b3; color: #8f1d16; }
+.line-find { display: block; width: 100%; min-width: 9rem; margin-bottom: .3rem; border: 1px dashed #cbd8ea; border-radius: .4rem; padding: .25rem .45rem; font-size: .82rem; }
+.shortcut-dialog table { width: 100%; }
+.shortcut-dialog th { text-align: left; white-space: nowrap; width: 7rem; }
+kbd { font: 600 .8rem ui-monospace, monospace; background: #edf1f7; border: 1px solid #cbd8ea; border-radius: .3rem; padding: .05rem .35rem; }
+@media (max-width: 760px) { .period-badge small { display: none; } }
+@media print { .period-badge, .line-find { display: none; } }

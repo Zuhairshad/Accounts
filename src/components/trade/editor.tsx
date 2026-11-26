@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { FinanceForm } from "@/components/accounting/finance-form";
+import { matchesSearch } from "@/components/accounting/entry-form";
 import { Button } from "@/components/ui/button";
 import { formatMoney } from "@/lib/display";
 import { Exact } from "@/lib/engine/model";
@@ -58,6 +59,7 @@ export function InvoiceEditor({ companyId, base, options, initial, source, origi
   const paid = payments.reduce((sum, payment) => sum.plus(exact(payment.amount)), new Exact(0));
   const open = total.minus(paid).minus(exact(head.withholding));
   const availableParties = options.people.filter((person) => person.type === partyType && (person.active || person.id === head.partyId));
+  const [itemFinds, setItemFinds] = useState<Record<number, string>>({});
   const availableItems = options.goods.filter((item) => item.active || rows.some((row) => row.itemId === item.id));
   const updateParty = (partyId: string) => {
     const input = options.people.find((person) => person.id === partyId);
@@ -102,12 +104,29 @@ export function InvoiceEditor({ companyId, base, options, initial, source, origi
             if (/^\d{0,18}(?:\.\d{0,10})?$/.test(value)) updateLine(index, { [field]: value });
           };
           return <tr key={original?.lineNo ?? index}><td>
-            {original ? <strong>{original.description} · line {original.lineNo}</strong> : <select aria-label={`Item line ${index+1}`}
-              value={line.itemId} onChange={(event) => updateLine(index, { itemId: event.target.value, unitLabel: undefined, purchaseAccountId: undefined })}>
-              <option value="">Select item or service</option>{availableItems.map((entry) => <option value={entry.id} key={entry.id}>
-                {entry.sku ? `${entry.sku} · ` : ""}{entry.name}{entry.kind === "service" ? " (service)" : ""}
-              </option>)}
-            </select>}
+            {original ? <strong>{original.description} · line {original.lineNo}</strong> : (() => {
+              const label = (entry: typeof availableItems[number]) => `${entry.sku ? `${entry.sku} · ` : ""}${entry.name}${entry.kind === "service" ? " (service)" : ""}`;
+              const query = itemFinds[index] ?? "";
+              const visible = availableItems.filter((entry) => entry.id === line.itemId || matchesSearch(query, label(entry)));
+              const choose = (itemId: string) => updateLine(index, { itemId, unitLabel: undefined, purchaseAccountId: undefined });
+              return <>
+                <input type="search" className="line-find" aria-label={`Find item line ${index+1}`} placeholder="Type to search, Enter to choose" value={query}
+                  onChange={(event) => setItemFinds({ ...itemFinds, [index]: event.target.value })}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter") return;
+                    event.preventDefault();
+                    const match = visible.find((entry) => entry.id !== line.itemId) ?? visible[0];
+                    if (match) {
+                      choose(match.id);
+                      setItemFinds({ ...itemFinds, [index]: "" });
+                      event.currentTarget.closest("tr")?.querySelector<HTMLInputElement>("input[inputmode=decimal]")?.focus();
+                    }
+                  }} />
+                <select aria-label={`Item line ${index+1}`} value={line.itemId} onChange={(event) => choose(event.target.value)}>
+                  <option value="">{query && !visible.length ? "No match" : "Select item or service"}</option>
+                  {visible.map((entry) => <option value={entry.id} key={entry.id}>{label(entry)}</option>)}
+                </select></>;
+            })()}
             <input aria-label={`Description line ${index+1}`} value={line.description} maxLength={250}
               onChange={(event) => updateLine(index, { description: event.target.value })} />
           </td>

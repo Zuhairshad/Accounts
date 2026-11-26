@@ -10,6 +10,11 @@ import { Button } from "../ui/button";
 
 export type Selector = { key: string; accountId: string; partyId: string | null; label: string; active: boolean; liquidity: string | null; control: string | null; balance: string | null };
 type Line = { row: number; target: string; direction: "debit" | "credit"; amount: string; description: string };
+/** Case-insensitive substring match on every word, so "rec ali" finds "1100 Accounts Receivable · Ali Traders". */
+export const matchesSearch = (query: string, label: string) => {
+  const text = label.toLowerCase();
+  return query.trim().toLowerCase().split(/\s+/).every((word) => text.includes(word));
+};
 const balanceLabel = (value: string) => {
   const n = new Exact(value);
   return `PKR ${formatMoney(n.abs().toFixed(2))} ${n.isZero() ? "" : n.gt(0) ? "Dr" : "Cr"}`.trim();
@@ -20,6 +25,7 @@ export function VoucherEditor({ companyId, entry, options, id, version, isPosted
   isPosted: boolean; approval: boolean; canPost: boolean; base: string;
 }) {
   const [header, setHeader] = useState(entry);
+  const [finds, setFinds] = useState<Record<number, string>>({});
   const [lines, setLines] = useState<Line[]>(() => {
     if (!entry.lines.length) return [{ row: 1, target: "", direction: "debit", amount: "", description: "" },
       { row: 2, target: "", direction: "credit", amount: "", description: "" }];
@@ -88,14 +94,31 @@ export function VoucherEditor({ companyId, entry, options, id, version, isPosted
             <td><select aria-label={`Side line ${index + 1}`} value={line.direction} onChange={(event) => edit(line.row, { direction: event.target.value as Line["direction"] })}>
               <option value="debit">Debit</option><option value="credit">Credit</option>
             </select></td>
-            <td><select aria-label={`Account or party line ${index + 1}`} value={line.target} onChange={(event) => edit(line.row, { target: event.target.value })}>
-              <option value="">Choose account or party</option>
-              {chosen && !chosen.active && <option value={chosen.key}>{chosen.label} (inactive)</option>}
-              <optgroup label="Accounts">{options.filter((option) => !option.partyId && option.active).map((option) =>
-                <option key={option.key} value={option.key}>{option.label}</option>)}</optgroup>
-              <optgroup label="Customers and suppliers">{options.filter((option) => option.partyId && option.active).map((option) =>
-                <option key={option.key} value={option.key}>{option.label}</option>)}</optgroup>
-            </select>{chosen?.balance !== null && chosen?.balance !== undefined &&
+            <td>{(() => {
+              const query = finds[line.row] ?? "";
+              const visible = options.filter((option) => option.active && (option.key === line.target || matchesSearch(query, option.label)));
+              return <>
+                <input type="search" className="line-find" aria-label={`Find account or party line ${index + 1}`} placeholder="Type to search, Enter to choose"
+                  value={query} onChange={(event) => setFinds({ ...finds, [line.row]: event.target.value })}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter") return;
+                    event.preventDefault();
+                    const match = visible.find((option) => option.key !== line.target) ?? visible[0];
+                    if (match) {
+                      edit(line.row, { target: match.key });
+                      setFinds({ ...finds, [line.row]: "" });
+                      event.currentTarget.closest("tr")?.querySelector<HTMLInputElement>("input[inputmode=decimal]")?.focus();
+                    }
+                  }} />
+                <select aria-label={`Account or party line ${index + 1}`} value={line.target} onChange={(event) => edit(line.row, { target: event.target.value })}>
+                  <option value="">{query && !visible.length ? "No match" : "Choose account or party"}</option>
+                  {chosen && !chosen.active && <option value={chosen.key}>{chosen.label} (inactive)</option>}
+                  <optgroup label="Accounts">{visible.filter((option) => !option.partyId).map((option) =>
+                    <option key={option.key} value={option.key}>{option.label}</option>)}</optgroup>
+                  <optgroup label="Customers and suppliers">{visible.filter((option) => option.partyId).map((option) =>
+                    <option key={option.key} value={option.key}>{option.label}</option>)}</optgroup>
+                </select></>;
+            })()}{chosen?.balance !== null && chosen?.balance !== undefined &&
               <small className="muted block">Current party balance {balanceLabel(chosen.balance)}</small>}</td>
             <td><input aria-label={`Amount line ${index + 1}`} inputMode="decimal" value={line.amount} maxLength={21}
               onChange={(event) => edit(line.row, { amount: event.target.value })} /></td>

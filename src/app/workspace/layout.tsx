@@ -1,10 +1,11 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { getDb } from "@/db";
-import { auditLogs } from "@/db/schema";
+import { auditLogs, financialYears } from "@/db/schema";
 import { getActor } from "@/lib/auth";
 import { companyList } from "@/lib/companies";
+import { karachiToday } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
 
@@ -31,9 +32,16 @@ export default async function Layout({ children }: { children: React.ReactNode }
   const rows = await getDb().select({ id: auditLogs.id, action: auditLogs.action, date: auditLogs.createdAt })
     .from(auditLogs).where(and(eq(auditLogs.actorId, actor.id), inArray(auditLogs.action, Object.keys(messages))))
     .orderBy(desc(auditLogs.createdAt)).limit(5);
+  const today = karachiToday();
+  const current = visible.length ? await getDb().select().from(financialYears).where(and(inArray(financialYears.companyId, visible.map((c) => c.id)),
+    lte(financialYears.startsOn, today), gte(financialYears.endsOn, today))) : [];
+  const years = Object.fromEntries(visible.map((company) => {
+    const year = current.find((row) => row.companyId === company.id);
+    return [company.id, year ? { name: year.name, startsOn: year.startsOn, endsOn: year.endsOn, closed: year.closed } : null];
+  }));
   return <WorkspaceShell
     actor={{ name: actor.displayName, username: actor.username, superAdmin: actor.superAdmin }}
-    companies={visible} manageable={manageable}
+    companies={visible} manageable={manageable} years={years}
     showCombined={visible.some((company) => company.active && company.permissions.includes("view_combined"))}
     notices={rows.map((row) => ({ id: row.id, description: messages[row.action], date: row.date.toLocaleDateString("en-GB", { timeZone: "Asia/Karachi" }).replaceAll("/", "-") }))}
   >{children}</WorkspaceShell>;

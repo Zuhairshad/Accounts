@@ -1,0 +1,52 @@
+# Accounting rules
+
+## Posting
+
+- PostgreSQL DATE stores accounting dates. TIMESTAMPTZ records creation, posting and audit events. Asia/Karachi, PKR and DD-MM-YYYY are the default business settings.
+- PKR uses two decimal places. User input above that precision is rejected. NUMERIC and Decimal.js preserve exact values. A journal must contain at least two lines, each with one strictly positive side, and equal total debits and credits.
+- A customer posts through the system receivables account. A supplier posts through the system payables account. The control is identified by its permanent system tag rather than its editable name or code. Managed control-account lines require a valid party of the correct classification. Unlinked legacy postings stay in the GL and are disclosed in party reports until explicitly reconciled.
+- CRV and BRV debit the named cash or bank accounts. Their party mode credits customer balances. CPV and BPV credit cash or bank accounts. Their party mode debits supplier balances. Direct mode accepts non-party counterpart accounts. JV and VR allow general accounts and valid tagged control lines. A manual voucher cannot use the same account and party identity on both sides.
+- Every posting requires an open accounting period inside an open year. The audited period-reopening action requires the close-period permission. Closed books may also be corrected through a separately posted current-period adjustment under the accounting team's approved procedure.
+- A company and fiscal year have a sequence per voucher kind. The visible number includes the kind, accounting date and sequence. Editing preserves the original number. Each mutation carries a request UUID and a fingerprint of its accepted input.
+
+## Drafts, approvals and revisions
+
+- Drafts have no official effect. A company can require draft submission and posting by a different authorized approver. A fresh approval is required after editing a submitted draft. Posted changes and opening or originating-document postings require the approval permission when the policy is enabled.
+- Posted rows are immutable. A corrected voucher atomically switches its document to a new balanced posting and keeps the previous journal and revision snapshot. An effective journal view excludes drafts, superseded versions and voided documents. Reports query the effective view.
+- A void preserves the document number, lines, user, time and reason. A restore validates the same posting under the current permissions and period and reactivates it exactly once. Active invoice allocations must first be explicitly released before their voucher can be edited or voided. Payment allocations and the GST or stock handling of their originating documents are independent responsibilities.
+- A linked trade or inventory adjustment voucher is managed through its originating document. Trade posting uses the same transaction for the journal, source, allocation links and stock. The origin check is deferred until commit so it can validate the linked source after both rows have been written.
+
+## Opening balances and settlements
+
+- One opening document exists per account or party. Individual and bulk entry share that document. The default offset is the system Opening Balance Equity account. A company can select another active equity account.
+- Openings default to debit for customers and credit for suppliers. Opposite directions represent legitimate advances. Setting a saved opening to zero creates a traceable void. A legacy opening already represented in imported journal metadata must be reconciled to the opening document before it can be edited. The original amount and offset survive migration.
+- Party balances come from posted control lines, including openings, non-invoice adjustments, receipts, advances and payments. Invoice aging separately uses posted invoice balances after linked credit notes and actual allocations.
+- Explicit allocation targets one invoice. FIFO uses accounting date, invoice number and ID as stable tie breakers. Partial amounts and surplus remain visible. Releases are dated and auditable. To preserve chronological capacity, new allocations cannot precede a later allocation or release on the selected payment or invoices.
+- Invoice aging uses the due date, with the invoice date as fallback. Age bands are current, 1–30, 31–60, 61–90 and over 90 overdue days. Party ledger balances use a debit-positive convention. Reports show payable and receivable totals and advances separately.
+
+## Deferred accounting decisions
+
+Statutory tax and withholding eligibility require accountant review. Intercompany eliminations, Day Book balance scope, and the treatment of manual vouchers in the Sale / Purchase Register remain open. No live legacy database was supplied.
+
+## Phase 3 trade journals
+
+- Each trade document retains one stable public invoice number, plus the separate generated voucher number. Both use the accounting date of the first posting in their number. A financial-year and document-kind sequence is allocated under the company posting lock. Editing, voiding and restoring preserve both public numbers.
+- A line rounds quantity × rate to cents, then applies the explicit discount and tax amounts. Quantities retain six decimal places and rates retain ten. Returns allocate the original line’s net value, discount, tax and sale cost cumulatively so a complete return absorbs the original cent totals. No Pakistan tax rates are assumed. Companies can enable manual tax and withholding amounts in Invoice settings.
+- A sale credits Sales Revenue and debits cash, bank, receivables and applicable withholding receivable according to the chosen settlement. Inventory sales debit COGS and credit Inventory. A purchase debits Inventory or the service’s configured expense or asset account, and credits cash, bank, payables and applicable withholding payable. Input and output tax use separate system accounts. Embedded settlements are part of the source voucher. They do not create extra receipt or payment vouchers.
+- Linked returns use the original line, party and terms. Refunds post to the explicitly selected cash or bank account. The remaining amount posts to the customer or supplier control account. The available part can offset the linked invoice, and excess remains an advance eligible for allocation. Historical standalone returns require approval and documented external evidence and values.
+- Saleable sales returns restore original issue cost to Inventory and credit COGS. Damaged sales returns debit Damaged and Lost Inventory and credit COGS at the original cost. The stock remains off hand. Purchase returns credit Inventory at the carrying average immediately before issue and record the difference from supplier credit to Purchase Return Variance.
+- Invoice effects, ledger lines, allocations, inventory versions and register references commit together. Active invoice allocations, posted returns and exchange sales must be resolved before editing or voiding their source. A revalued voucher can retain a settlement link only when the replacement party line and applied credit still match. Affected locked periods require an approved reopening. Independent current-period corrections remain available under the approved accounting procedure.
+
+## Moving-average inventory
+
+- The timeline sorts by accounting date, opening stock first for that date, stable source creation time and source ID, then line number. Fractional issues use the quantity-weighted carrying average rounded to cents. Complete depletion consumes the exact remaining value. Receipts use the net capitalizable amount. A valuation adjustment changes value while holding quantity fixed.
+- An initial opening is unique per company and item and precedes other recognized stock movements. Opening corrections are separate adjustments. Initial and corrective openings use the configured equity offset or Opening Balance Equity. Damage and loss use the loss account. Other quantity and valuation corrections use the adjustment account.
+- Each stock amendment replays the company's source documents and effective legacy movements. Changed projections receive new immutable journal and stock versions. A closed period, historical negative stock or unverifiable change to imported stock aborts the complete transaction. A zero-value trade document or unchanged count can retain an auditable source without invented monetary journal lines.
+
+## Phase 4 reporting and registers
+
+- Official journal reports use effective posted entries. Opening is the signed balance before the first accounting date, period movements include both endpoints, and closing is opening plus movement. Running balances are calculated before display filters are applied.
+- Profit & Loss includes each nominal ledger exactly once for the selected period. Sales Returns reduce Gross Sales, and unmapped expenses, including legacy Purchases, go to Operating Expenses. An authorized accountant can identify accounts for Other Expenses. The Balance Sheet shows posted equity and any remaining prior-year nominal balances plus current-year results. Trial Balance and Balance Sheet present actual reconciliation differences. Inventory Valuation compares the dated stock subledger to the inventory control account.
+- Company-wise reporting provides separate company sections. Combined account reporting uses shared control keys or explicit groups with matching classifications. Unmapped ledgers remain company-specific. Figures are aggregates without intercompany eliminations.
+- Day Book can follow effective cash or bank journal movements, where a debit increases the applicable asset balance. The informational mode allows a company-defined opening and Dr−Cr or Cr−Dr direction. Combined displays maintain separate running balances by company. Sale / Purchase uses negative amounts for returns in the original sale or purchase column.
+- Register-only changes remain informational. An explicit accounting action creates or attaches a posted document through the existing engine. Subsequent corrections, voids and restorations use the source voucher or invoice. The posted register follows that source. Complex invoices and returns use the trade workflow and may be linked after posting.

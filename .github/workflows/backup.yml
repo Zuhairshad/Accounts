@@ -1,0 +1,38 @@
+name: Encrypted independent database backup
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "27 21 * * *"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: production-database-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    if: vars.AZAM_BACKUP_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment: backup
+    steps:
+      - uses: actions/checkout@v5
+      - uses: aws-actions/configure-aws-credentials@v5
+        with:
+          aws-region: ${{ vars.AZAM_BACKUP_REGION }}
+          role-to-assume: ${{ vars.AZAM_BACKUP_UPLOAD_ROLE }}
+      - name: Install encryption tool
+        run: sudo apt-get update && sudo apt-get install -y age
+      - name: Encrypt and upload PostgreSQL backup
+        env:
+          PGHOST: ${{ secrets.AZAM_BACKUP_PGHOST }}
+          PGDATABASE: ${{ secrets.AZAM_BACKUP_PGDATABASE }}
+          PGUSER: ${{ secrets.AZAM_BACKUP_PGUSER }}
+          PGPASSWORD: ${{ secrets.AZAM_BACKUP_PGPASSWORD }}
+          BACKUP_AGE_RECIPIENT: ${{ vars.AZAM_BACKUP_AGE_RECIPIENT }}
+          BACKUP_S3_PREFIX: ${{ vars.AZAM_BACKUP_S3_PREFIX }}
+        run: bash scripts/backup.sh

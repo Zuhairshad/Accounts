@@ -1,0 +1,52 @@
+name: Verify accounting foundation
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: azam_ci_test
+          POSTGRES_USER: azam_ci_owner
+          POSTGRES_PASSWORD: isolated-ci-owner
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U azam_ci_owner -d azam_ci_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_MIGRATION_URL: postgres://azam_ci_owner:isolated-ci-owner@127.0.0.1:5432/azam_ci_test
+      AZAM_TEST_DATABASE_URL: postgres://azam_ci_owner:isolated-ci-owner@127.0.0.1:5432/azam_ci_test
+      DATABASE_URL: postgres://azam_ci_app:isolated-ci-app@127.0.0.1:5432/azam_ci_test
+      NEXTAUTH_URL: http://127.0.0.1:3000
+      NEXTAUTH_SECRET: isolated-ci-secret-published-for-local-ci-only
+      AZAM_E2E_ADMIN: ci-admin
+      AZAM_E2E_PASSWORD: Isolated CI initial password only
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run db:migrate
+      - name: Provision isolated test database
+        run: |
+          psql "$DATABASE_MIGRATION_URL" -v ON_ERROR_STOP=1 -c "CREATE ROLE azam_ci_app LOGIN PASSWORD 'isolated-ci-app'"
+          npm run db:grant-runtime -- azam_ci_app
+          printf '%s\n' "$AZAM_E2E_PASSWORD" | DATABASE_URL="$DATABASE_MIGRATION_URL" npm run admin:bootstrap -- "$AZAM_E2E_ADMIN" "CI Administrator"
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e

@@ -1,0 +1,18 @@
+export const modules = [
+  { title: "General ledger", path: "ledger", category: "Accounting" }, { title: "Chart of accounts", path: "chart", category: "Accounting" },
+  { title: "New voucher", path: "vouchers/new", category: "Accounting" }, { title: "Voucher register", path: "vouchers", category: "Accounting" },
+  { title: "Opening balances", path: "opening", category: "Accounting" }, { title: "Day Book", reportPath: "day-book", category: "Accounting" },
+  { title: "Customers and suppliers", path: "parties", category: "Trade" }, { title: "Party ledger", path: "party-ledger", category: "Trade" },
+  { title: "Legacy party voucher linking", path: "repair", category: "Trade" }, { title: "Payments, receipts and allocations", path: "allocations", category: "Trade" },
+  { title: "Sales invoice", tradePath: "invoices?type=sale", category: "Trade" }, { title: "Purchase invoice", tradePath: "invoices?type=purchase", category: "Trade" },
+  { title: "Sale returns", tradePath: "invoices?type=sale_return", category: "Trade" }, { title: "Purchase returns", tradePath: "invoices?type=purchase_return", category: "Trade" }, { title: "Invoice settings", tradePath: "settings", category: "Trade" }, { title: "Invoice register", tradePath: "invoices", category: "Trade" },
+  { title: "Sale / Purchase Register", reportPath: "sale-purchase", category: "Trade" },
+  { title: "Inventory items", tradePath: "inventory", category: "Inventory" }, { title: "Stock ledger and valuation", tradePath: "inventory", category: "Inventory" },
+  { title: "Inventory adjustments", tradePath: "adjustments", category: "Inventory" },
+  { title: "Trial balance", reportPath: "trial-balance", category: "Reports" }, { title: "Profit & loss", reportPath: "profit-loss", category: "Reports" },
+  { title: "Balance sheet", reportPath: "balance-sheet", category: "Reports" }, { title: "Daily MIS", reportPath: "mis", category: "Reports" },
+  { title: "Debtors report and aging", path: "debtors", category: "Reports" }, { title: "Creditors report and aging", path: "creditors", category: "Reports" }, { title: "Combined debtors and creditors", reportPath: "combined-parties", category: "Reports" },
+  { title: "Company-wise and consolidated reports", reportPath: "company-wise", category: "Reports" },
+  { title: "Audit, revisions and restoration", path: "recycle", category: "Administration" }, { title: "Period close and approvals", path: "settings", category: "Administration" },
+  { title: "Migration and recovery history", category: "Administration" },
+];

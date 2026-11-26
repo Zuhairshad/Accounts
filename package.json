@@ -1,0 +1,67 @@
+{
+  "name": "azam-easy-accounts",
+  "version": "4.0.0",
+  "scripts": {
+    "test": "vitest run",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "next typegen && tsc --noEmit",
+    "test:e2e": "playwright test",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "admin:bootstrap": "tsx --env-file-if-exists=.env.local scripts/bootstrap-admin.ts",
+    "db:grant-runtime": "tsx --env-file-if-exists=.env.local scripts/grant-runtime.ts"
+  },
+  "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
+  "private": true,
+  "dependencies": {
+    "@hookform/resolvers": "7.0.9",
+    "@radix-ui/react-slot": "1.5.0",
+    "@react-pdf/renderer": "4.9.1",
+    "@tailwindcss/postcss": "4.3.5",
+    "@tanstack/react-table": "8.21.3",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "decimal.js": "10.6.0",
+    "dotenv": "18.0.10",
+    "drizzle-orm": "0.45.4",
+    "exceljs": "4.4.0",
+    "lucide-react": "1.81.0",
+    "next": "16.4.6",
+    "next-auth": "4.24.15",
+    "pdfkit": "0.21.0",
+    "pg": "8.23.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-hook-form": "7.92.0",
+    "recharts": "3.11.1",
+    "server-only": "0.0.1",
+    "tailwind-merge": "3.7.1",
+    "tailwindcss": "4.3.5",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.1",
+    "@types/node": "24.19.4",
+    "@types/pdfkit": "0.17.7",
+    "@types/pg": "8.23.1",
+    "@types/react": "19.3.3",
+    "@types/react-dom": "19.3.0",
+    "drizzle-kit": "0.31.11",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vitest": "5.1.2"
+  },
+  "overrides": {
+    "exceljs": {
+      "uuid": "11.1.1"
+    },
+    "@esbuild-kit/core-utils": {
+      "esbuild": "0.25.12"
+    }
+  }
+}

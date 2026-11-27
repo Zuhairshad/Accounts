@@ -3,8 +3,11 @@
 Target: **Vercel** (Next.js, Node.js 24) + **Neon PostgreSQL**. Every step that needs credentials is performed by an
 authorized operator; no secret belongs in the repository, in this document or in shell history.
 
-> Status: the application is deployment-ready but **not deployed**. No production Neon project, Vercel project or
-> domain was provided. Do not treat the system as live until every item in "Go-live checklist" is signed off.
+> Status (27-11-2026): **deployed** at https://azam-easy-accounts.vercel.app (Vercel project `azam-easy-accounts`,
+> functions in `sin1`) on Neon project `azam-easy-accounts` (AWS ap-southeast-1, PostgreSQL 18, database `azam_accounts`,
+> branch `production`, 6-hour PITR on the free plan). Migrations 0000–0013 and runtime grants are applied; the Super Admin
+> `admin` must change the temporary password at first sign-in. Backups, the restore drill on Neon and the accountant
+> approvals in the go-live checklist are still outstanding. The database is not yet approved for live financial use.
 
 ## 1. Neon
 

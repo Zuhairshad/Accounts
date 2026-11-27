@@ -175,8 +175,11 @@ accountant has signed the reconciliation.
 
 ## Deployment readiness
 
-Code, migrations, build, tests, security controls and runbooks are ready. Deployment is **not complete**: no hosting,
-database or backup credentials were provided, and nothing was deployed from this session.
+Deployed on 27-11-2026 to **https://azam-easy-accounts.vercel.app** (Vercel, Singapore functions) with Neon PostgreSQL 18
+in Singapore. Verified on the live site: security headers (CSP, HSTS, frame denial), anonymous redirect to sign-in, and a
+real sign-in by the Super Admin reaching the forced password change through the restricted database role. Still
+outstanding: encrypted backup activation, a restore drill on Neon, longer PITR retention (requires a paid Neon plan),
+and the accountant approvals below.
 
 ## Required accountant approvals before live use
 

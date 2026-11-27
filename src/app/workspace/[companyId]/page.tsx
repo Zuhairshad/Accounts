@@ -146,15 +146,22 @@ export default async function Dashboard({ params, searchParams }: { params: Prom
             </dl>
           </section>
 
-          <section className="panel dash-panel attention" aria-labelledby="attention-title">
-            <div className="dash-panel-head"><h2 id="attention-title">Needs attention</h2>
-              {can("export") && <Link className="text-link" href={`${base}/reconciliation?from=${range.from}&to=${range.to}`}>Reconciliation</Link>}</div>
-            {attention.length ? <ul className="attention-list">{attention.map((item) => <li key={item.text}>
-              <Link href={item.href}><span className={`attention-icon ${item.tone}`}><item.icon size={17} aria-hidden /></span>
-                <span><strong>{item.text}</strong><small>{item.detail}</small></span></Link>
-            </li>)}</ul> : <div className="attention-clear"><CircleCheck size={28} aria-hidden /><strong>All clear</strong>
-              <p className="muted">No drafts, overdue invoices or unlinked party lines.</p></div>}
+          <div className="dash-stack">
+            <section className="panel dash-panel attention" aria-labelledby="attention-title">
+              <div className="dash-panel-head"><h2 id="attention-title">Needs attention</h2>
+                {can("export") && <Link className="text-link" href={`${base}/reconciliation?from=${range.from}&to=${range.to}`}>Reconciliation</Link>}</div>
+              {attention.length ? <ul className="attention-list">{attention.map((item) => <li key={item.text}>
+                <Link href={item.href}><span className={`attention-icon ${item.tone}`}><item.icon size={17} aria-hidden /></span>
+                  <span><strong>{item.text}</strong><small>{item.detail}</small></span></Link>
+              </li>)}</ul> : <div className="attention-clear"><CircleCheck size={28} aria-hidden /><strong>All clear</strong>
+                <p className="muted">No drafts, overdue invoices or unlinked party lines.</p></div>}
+            </section>
+          <section className="panel dash-panel" aria-labelledby="aging-title">
+            <div className="dash-panel-head"><h2 id="aging-title">Receivables by age</h2>
+              <Link className="text-link" href={`${base}/reports/aging?to=${range.to}`}>Aging report</Link></div>
+            <AgingDonut bands={data.aging} />
           </section>
+          </div>
         </div>
       </div>
 
@@ -171,11 +178,6 @@ export default async function Dashboard({ params, searchParams }: { params: Prom
             </Link></li>;
           })}</ul> : <p className="aside-empty">No posted vouchers yet.</p>}
         </div>
-        <section className="panel dash-panel" aria-labelledby="aging-title">
-          <div className="dash-panel-head"><h2 id="aging-title">Receivables by age</h2>
-            <Link className="text-link" href={`${base}/reports/aging?to=${range.to}`}>Aging report</Link></div>
-          <AgingDonut bands={data.aging} />
-        </section>
       </aside>
     </div>
   </div>;

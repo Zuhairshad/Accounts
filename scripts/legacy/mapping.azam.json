@@ -1,0 +1,113 @@
+{
+  "profile": "AZAM EASY ACCOUNTS desktop backup schema, verified 27-11-2026. Legacy users and plaintext passwords are intentionally not mapped.",
+  "fiscalYearStartMonth": 7,
+  "tables": {
+    "companies": {
+      "table": "companies",
+      "columns": {
+        "id": "id",
+        "name": "name",
+        "active": "active"
+      }
+    },
+    "accounts": {
+      "table": "accounts",
+      "columns": {
+        "id": "id",
+        "companyId": "company_id",
+        "code": "code",
+        "name": "name",
+        "type": "type"
+      }
+    },
+    "parties": {
+      "table": "parties",
+      "columns": {
+        "id": "id",
+        "companyId": "company_id",
+        "type": "kind",
+        "name": "name",
+        "phone": "phone",
+        "address": "address"
+      }
+    },
+    "items": {
+      "table": "items",
+      "columns": {
+        "id": "id",
+        "companyId": "company_id",
+        "name": "name",
+        "unit": "unit",
+        "openingQty": "opening_qty",
+        "openingRate": "opening_rate"
+      }
+    },
+    "vouchers": {
+      "table": "vouchers",
+      "columns": {
+        "id": "id",
+        "companyId": "company_id",
+        "number": "vno",
+        "date": "vdate",
+        "type": "vtype",
+        "narration": "narration"
+      }
+    },
+    "voucherLines": {
+      "table": "lines",
+      "columns": {
+        "id": "id",
+        "voucherId": "voucher_id",
+        "accountId": "account_id",
+        "partyId": "party_id",
+        "itemId": "item_id",
+        "debit": "debit",
+        "credit": "credit"
+      }
+    },
+    "invoiceRows": {
+      "table": "invoices",
+      "columns": {
+        "id": "id",
+        "companyId": "company_id",
+        "number": "invoice_no",
+        "date": "invoice_date",
+        "type": "invoice_type",
+        "partyId": "party_id",
+        "itemId": "item_id",
+        "qty": "qty",
+        "rate": "rate",
+        "amount": "total",
+        "voucherId": "voucher_id"
+      }
+    }
+  },
+  "values": {
+    "accountType": {
+      "Asset": "asset",
+      "Liability": "liability",
+      "Equity": "equity",
+      "Income": "income",
+      "Expense": "expense"
+    },
+    "partyType": {
+      "Customer": "customer",
+      "Supplier": "supplier"
+    },
+    "voucherType": {
+      "JV": "JV",
+      "VR": "VR",
+      "CPV": "CPV",
+      "CRV": "CRV",
+      "BPV": "BPV",
+      "BRV": "BRV",
+      "Sales": "sale",
+      "Purchase": "purchase"
+    },
+    "invoiceType": {
+      "Sales": "sale",
+      "Purchase": "purchase"
+    }
+  },
+  "companyTargets": {}
+}

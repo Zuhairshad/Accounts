@@ -15,7 +15,7 @@ export type LegacyCompany = { legacyId: string; name: string; targetName: string
 export type LegacyAccount = { legacyId: string; company: string; code: string; name: string; type: "asset" | "liability" | "equity" | "income" | "expense" };
 export type LegacyParty = { legacyId: string; company: string; type: "customer" | "supplier"; name: string; importName: string; phone: string; address: string };
 export type LegacyItem = { legacyId: string; company: string; name: string; unit: string; openingQty: string; openingRate: string; openingDate: string | null };
-export type LegacyLine = { lineNo: number; account: string; party: string | null; debit: string; credit: string; description: string; unlinkedParty?: string };
+export type LegacyLine = { lineNo: number; account: string; party: string | null; item?: string; debit: string; credit: string; description: string; unlinkedParty?: string };
 export type LegacyVoucher = {
   legacyId: string; company: string; number: string; date: string; type: Mapping["values"]["voucherType"][string];
   narration: string; lines: LegacyLine[]; quarantine?: string;
@@ -237,6 +237,11 @@ export function normalize(mapping: Mapping, read: (entity: keyof Mapping["tables
       lineNo++;
       const entry: LegacyLine = { lineNo, account: account.legacyId, party: linked, description: text(line.description).slice(0, 1000),
         debit: Exact.max(net, 0).toFixed(2), credit: Exact.max(net.negated(), 0).toFixed(2) };
+      // The item tag on an inventory line is kept only when it names an item of the same company.
+      const itemId = key(line.itemId);
+      const taggedItem = itemId ? items.find((entry) => entry.legacyId === itemId) : undefined;
+      if (taggedItem && taggedItem.company === company) entry.item = taggedItem.legacyId;
+      else if (itemId) at("unknown-line-item", "info", `Line ${lineId} references item ${itemId} that does not exist in this company.`, "Import the line without an item tag.");
       dr = dr.plus(entry.debit); cr = cr.plus(entry.credit);
       voucher.lines.push(entry);
     }

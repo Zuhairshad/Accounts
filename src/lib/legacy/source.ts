@@ -25,7 +25,7 @@ export const mappingSchema = z.object({
     parties: table({ id: column, companyId: column, type: column, name: column, phone: optional, address: optional }),
     items: table({ id: column, companyId: column, name: column, unit: optional, openingQty: optional, openingRate: optional, openingDate: optional }).optional(),
     vouchers: table({ id: column, companyId: column, number: column, date: column, type: column, narration: optional }),
-    voucherLines: table({ id: optional, voucherId: column, accountId: column, partyId: optional, debit: column, credit: column, description: optional, lineNo: optional }),
+    voucherLines: table({ id: optional, voucherId: column, accountId: column, partyId: optional, itemId: optional, debit: column, credit: column, description: optional, lineNo: optional }),
     invoiceRows: table({ id: optional, companyId: column, number: column, date: column, type: column, partyId: optional,
       itemId: column, qty: column, rate: column, amount: column, voucherId: column }).optional(),
   }).strict(),

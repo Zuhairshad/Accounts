@@ -312,6 +312,7 @@ async function plan(tx: Transaction, data: Dataset, mapping: Mapping, actorName:
     const lines = batch.flatMap((v) => v.lines.map((line) => ({
       companyId: target(v.company), voucherId: voucherTarget.get(v.legacyId)!, lineNo: line.lineNo,
       accountId: accountTarget.get(line.account)!.id, partyId: line.party ? partyTarget.get(line.party)! : null,
+      itemId: line.item ? itemTarget.get(line.item) ?? null : null,
       debit: line.debit, credit: line.credit, description: line.description,
     })));
     for (const part of chunk(lines, 500)) await tx.insert(journalLines).values(part);

@@ -36,8 +36,8 @@ test("admin sets up a company and a viewer can only open an assigned workspace",
   await login(page, testAdmin!, adminPassword!);
   await updatePassword(page, adminPassword!, newPassword);
   await login(page, testAdmin!, newPassword);
-  await expect(page.getByRole("heading", { name: "Accounting overview" })).toBeVisible();
-  await expect(page.getByText("No posted vouchers in this period")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
+  await expect(page.getByText("No posted vouchers yet.")).toBeVisible();
   const otherWorkspace = page.url();
   const search = page.getByRole("textbox", { name: "Global search" });
   await search.fill("cash");
@@ -86,6 +86,7 @@ test("admin sets up a company and a viewer can only open an assigned workspace",
   await updatePassword(viewer, memberPassword, `${memberPassword} updated`);
   await login(viewer, username, `${memberPassword} updated`);
   await expect(viewer.getByText(renamed, { exact: true }).last()).toBeVisible();
+  await viewer.getByText("Change period", { exact: true }).click();
   await viewer.getByRole("combobox", { name: "Financial year" }).selectOption({ label: "FY 2026–27" });
   await viewer.getByRole("button", { name: "Apply filters" }).click();
   await expect(viewer.getByLabel("From")).toHaveValue("2026-07-01");

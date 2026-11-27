@@ -112,12 +112,13 @@ General Ledger; net sales against invoices; allocation validity; postings inside
 | Legacy CLI smoke test (inspect, dry run, import guard) | Passed |
 
 Observations reported for completeness:
-- **Open item — intermittent autosave failure.** `reports.spec.ts` (Day Book autosave) failed in 2 of 12 runs. In both,
-  the description typed first into a new register row was not saved, while the amount and reference typed afterwards
-  were. This may be a real autosave race that can drop typed text. Ruled out: CPU load (4/4 passed under full load), a
-  delayed post-link refresh (a control run passed), the new Enter-key handler and the CSP. Not ruled out: that it predates
-  Phase 5 (the browser suite was not run before Phase 5 changes in this environment). CI now keeps and uploads a
-  Playwright trace for every failed test; investigate the first captured trace before relying on the registers for live entry.
+- **Day Book autosave (resolved with a proven guard; residual risk noted).** `reports.spec.ts` failed 2 times in about 37
+  genuine runs: the description typed first into a new register row was lost while later fields saved. A deterministic
+  test proved the register moved keyboard focus to the new row's date cell one animation frame after "Add row" even when
+  the user had already moved to another field, so on a slow device the next keystrokes could land in the wrong cell. The
+  grid now moves focus only if it is still where it was when "Add row" was pressed; the new tests fail without the fix and
+  pass with it, and a 90-run repetition showed no genuine failure. The original intermittent failure was never captured in
+  a trace, so this is the most likely cause rather than a proven one; CI keeps traces of any future failure.
 - `workspace.spec.ts` consumes the bootstrapped administrator's one-time password, so it passes only once per bootstrap
   (as documented in TEST_PLAN.md). CI bootstraps a fresh database every run.
 - Local runs used Node.js 22 and PostgreSQL 16; CI and production target Node.js 24 and PostgreSQL 18. CI has not been
@@ -155,7 +156,7 @@ routes return 404); IP-based login limiting applies only behind Vercel's trusted
 5. Account search filters a native select rather than a full combobox; long company names truncate in the phone top bar.
 6. No offline entry; interrupted saves rely on idempotent retry and the uncertain-save message.
 7. Production-scale latency (stock replay, very large exports) has not been measured on real volumes.
-8. Intermittent Day Book autosave test failure (see "Automated test results"); cause not yet isolated.
+8. The original intermittent Day Book failure was not captured in a trace; the focus race fixed above is its most likely cause.
 
 ## Outstanding configuration requirements
 

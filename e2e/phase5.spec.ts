@@ -95,3 +95,31 @@ test("reconciliation and operations history are hidden from users without permis
     await expect(page.getByText(/Financial reconciliation|Recorded operations|Discrepancies/)).toHaveCount(0);
   }
 });
+
+test("adding a register row does not pull focus away from a field the user has already moved to", async ({ page }) => {
+  test.skip(!database, "An isolated database is required.");
+  await login(page, admin);
+  await page.goto(`/workspace/${companyId}/reports/day-book?from=${today.slice(0, 4)}-01-01&to=${today}&perspective=manual`);
+  await expect(page.getByRole("button", { name: "Add row" })).toBeVisible();
+  // Hold animation frames so the test controls exactly when the grid's deferred focus step runs (a slow device).
+  await page.evaluate(() => {
+    const held: FrameRequestCallback[] = [];
+    window.requestAnimationFrame = (callback) => { held.push(callback); return held.length; };
+    (window as unknown as { flushFrames: () => void }).flushFrames = () => { while (held.length) held.shift()!(performance.now()); };
+  });
+  await page.getByRole("button", { name: "Add row" }).click();
+  const description = page.getByRole("textbox", { name: "description row 1" });
+  await description.focus();
+  await page.evaluate(() => (window as unknown as { flushFrames: () => void }).flushFrames());
+  await expect(description).toBeFocused();
+  await page.keyboard.type("Typed straight after adding the row");
+  await expect(description).toHaveValue("Typed straight after adding the row");
+});
+
+test("adding a register row still focuses its first cell when the user has not moved elsewhere", async ({ page }) => {
+  test.skip(!database, "An isolated database is required.");
+  await login(page, admin);
+  await page.goto(`/workspace/${companyId}/reports/day-book?from=${today.slice(0, 4)}-01-01&to=${today}&perspective=manual`);
+  await page.getByRole("button", { name: "Add row" }).click();
+  await expect(page.locator(".register-entry tbody tr").last().getByRole("textbox").first()).toBeFocused();
+});

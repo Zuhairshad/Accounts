@@ -125,7 +125,14 @@ export function RegisterGrid({companyId,kind,rows,contacts,accounts,stock,linkab
     rowsRef.current=[...rowsRef.current,row];
     setItems(rowsRef.current);
     schedule(id);
-    requestAnimationFrame(()=>table.current?.querySelector<HTMLInputElement>(`[data-row="${id}"][data-column="1"]`)?.focus());
+    // Move to the new row's first cell only if focus has not moved since "Add row" was pressed. Otherwise a slow frame
+    // would pull focus away from a field the user is already typing in, and the next keystrokes would land elsewhere.
+    const opener=document.activeElement;
+    requestAnimationFrame(()=>{
+      const active=document.activeElement;
+      if (active!==opener && active!==document.body && active!==null) return;
+      table.current?.querySelector<HTMLInputElement>(`[data-row="${id}"][data-column="1"]`)?.focus();
+    });
   }
   function lifecycle(row:Grid,operation:"void"|"restore") {
     if (row.phase!=="Saved") return;

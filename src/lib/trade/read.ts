@@ -1,7 +1,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Database, Transaction } from "@/db";
-import { accounts, companySettings, inventoryAdjustments, invoices, items, parties, units, users } from "@/db/schema";
-import type { InvoiceInput, TradeType } from "./model";
+import { accounts, companySettings, inventoryAdjustments, invoices, items, parties, salesExecutives, units, users } from "@/db/schema";
+import type { InvoiceInput, LineType, TradeType } from "./model";
 
 type Reader = Database | Transaction;
 export async function tradeOptions(db: Reader, companyId: string) {
@@ -13,7 +13,9 @@ export async function tradeOptions(db: Reader, companyId: string) {
   const heads = await db.select({ id: accounts.id, code: accounts.code, name: accounts.name, type: accounts.type,
     control: accounts.control, liquidity: accounts.liquidity }).from(accounts)
     .where(and(eq(accounts.companyId, companyId), eq(accounts.active, true))).orderBy(accounts.code);
-  return { settings, people, goods, heads };
+  const executives = await db.select({ id: salesExecutives.id, name: salesExecutives.name, active: salesExecutives.active })
+    .from(salesExecutives).where(eq(salesExecutives.companyId, companyId)).orderBy(salesExecutives.name);
+  return { settings, people, goods, heads, executives };
 }
 
 export async function invoiceRegister(
@@ -44,10 +46,11 @@ export async function invoiceDetail(db: Reader, companyId: string, id: string) {
   const lines = await db.execute<{
     lineNo: number; itemId: string; item: string; sku: string | null; unit: string; kind: string; description: string;
     qty: string; rate: string; subtotal: string; discount: string; tax: string; amount: string; inventoryCost: string; disposition: string;
+    lineType: LineType;
   }>(sql`
     SELECT l.line_no AS "lineNo",l.item_id AS "itemId",g.name AS item,g.sku,coalesce(nullif(l.unit_label,''),u.name) AS unit,
       g.kind,l.description,l.quantity::text AS qty,l.rate::text,l.subtotal::text,l.discount::text,l.tax::text,l.amount::text,
-      l.inventory_cost::text AS "inventoryCost",l.disposition
+      l.inventory_cost::text AS "inventoryCost",l.disposition,l.line_type AS "lineType"
     FROM invoice_lines l JOIN inventory_items g ON g.company_id=l.company_id AND g.id=l.item_id
     JOIN inventory_units u ON u.company_id=g.company_id AND u.id=g.unit_id
     WHERE l.company_id=${companyId} AND l.invoice_id=${id}
@@ -64,22 +67,24 @@ export async function invoiceDetail(db: Reader, companyId: string, id: string) {
   const paymentHeads = settlements.length ? await db.select({ id: accounts.id, name: accounts.name, liquidity: accounts.liquidity })
     .from(accounts).where(and(eq(accounts.companyId, companyId), inArray(accounts.id, settlements.map((row) => row.accountId)))) : [];
   const payments = settlements.map((row) => ({ ...row, name: paymentHeads.find((head) => head.id === row.accountId)?.name ?? "Cash or bank" }));
-  return { invoice, lines: lines.rows, party, voucher, original, exchange, payments };
+  const [executive] = invoice.salesExecutiveId ? await db.select({ id: salesExecutives.id, name: salesExecutives.name }).from(salesExecutives)
+    .where(and(eq(salesExecutives.companyId, companyId), eq(salesExecutives.id, invoice.salesExecutiveId))) : [];
+  return { invoice, lines: lines.rows, party, voucher, original, exchange, payments, executive: executive ?? null };
 }
 
 export async function registerLines(db: Reader, companyId: string, ids: string[]) {
   if (!ids.length) return [];
   const list = sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `);
-  return (await db.execute<{ invoiceId: string; lineNo: number; item: string; unit: string; qty: string; rate: string; amount: string | null }>(sql`
+  return (await db.execute<{ invoiceId: string; lineNo: number; item: string; unit: string; qty: string; rate: string; amount: string | null; lineType: LineType }>(sql`
     SELECT l.invoice_id AS "invoiceId",l.line_no AS "lineNo",g.name AS item,coalesce(nullif(l.unit_label,''),u.name) AS unit,
-      l.quantity::text AS qty,l.rate::text,l.amount::text
+      l.quantity::text AS qty,l.rate::text,l.amount::text,l.line_type AS "lineType"
     FROM invoice_lines l JOIN invoices i ON i.company_id=l.company_id AND i.id=l.invoice_id
     JOIN inventory_items g ON g.company_id=l.company_id AND g.id=l.item_id
     JOIN inventory_units u ON u.company_id=g.company_id AND u.id=g.unit_id
     WHERE l.company_id=${companyId} AND l.invoice_id IN (${list})
       AND (l.posting_voucher_id=i.voucher_id OR (i.payload IS NULL AND l.posting_voucher_id IS NULL))
     UNION ALL
-    SELECT i.id,p.ordinality::integer,g.name,u.name,p.entry->>'quantity',p.entry->>'rate',NULL::text
+    SELECT i.id,p.ordinality::integer,g.name,u.name,p.entry->>'quantity',p.entry->>'rate',NULL::text,coalesce(p.entry->>'lineType','product')
     FROM invoices i CROSS JOIN LATERAL jsonb_array_elements(i.payload->'lines') WITH ORDINALITY p(entry,ordinality)
     JOIN inventory_items g ON g.company_id=i.company_id AND g.id=(p.entry->>'itemId')::uuid
     JOIN inventory_units u ON u.company_id=g.company_id AND u.id=g.unit_id

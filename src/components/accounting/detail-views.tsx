@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { and, eq, sql } from "drizzle-orm";
 import { Copy, Download, Printer } from "lucide-react";
 import { getDb } from "@/db";
-import { accounts, companySettings, parties } from "@/db/schema";
+import { accounts, companySettings, parties, salesExecutives } from "@/db/schema";
 import {
   allocateAction, releaseAction, repairPartyAction, transitionVoucherAction,
 } from "@/lib/engine/actions";
@@ -69,6 +69,8 @@ export async function VoucherDetail(screen: Screen, voucher: ViewVoucher) {
       WHERE r.company_id=${companyId} AND r.entity_type='voucher' AND r.entity_id=${id} ORDER BY r.version DESC
     `),
   ]);
+  const [executive] = voucher.doc?.salesExecutiveId ? await getDb().select({ name: salesExecutives.name }).from(salesExecutives)
+    .where(and(eq(salesExecutives.companyId, companyId), eq(salesExecutives.id, voucher.doc.salesExecutiveId))) : [];
   const entry = entryFrom(voucher);
   const lines: (EntryLine & { account?: string; party?: string | null })[] = voucher.postedLines.length ? voucher.postedLines : entry?.lines ?? [];
   const options = voucher.postedLines.length || !lines.length ? [] : await journalSelectors(getDb(), companyId, karachiToday());
@@ -103,6 +105,7 @@ export async function VoucherDetail(screen: Screen, voucher: ViewVoucher) {
       <div><dt>Voucher type</dt><dd>{type}</dd></div>
       <div><dt>Status</dt><dd className="capitalize">{status === "void" ? "Voided" : status === "draft" && voucher.doc?.submittedBy ? "Awaiting approval" : status}</dd></div>
       <div><dt>Reference</dt><dd>{voucher.reference || "—"}</dd></div>
+      {executive && <div><dt>Sales executive</dt><dd>{executive.name}</dd></div>}
       <div><dt>Narration</dt><dd>{entry?.narration || voucher.narration || "—"}</dd></div>
     </dl></section>
     <PanelTable title="Journal lines" headers={["Account","Party","Description","Debit (PKR)","Credit (PKR)","Current party balance"]}

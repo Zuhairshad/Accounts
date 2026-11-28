@@ -217,6 +217,9 @@ th button { display: inline-flex; gap: .5rem; align-items: center; }
 .report-filter-grid { grid-template-columns:repeat(auto-fit,minmax(11rem,1fr)); }
 .report-row-section { background:#f1f5f9; font-weight:700; }
 .report-row-total { background:#f8fafc; font-weight:700; }
+.report-row-group { background:#f8fafc; font-weight:600; }
+.report-toggle { display:inline-flex; align-items:center; gap:4px; font:inherit; color:#154dac; background:none; border:0; padding:0; cursor:pointer; }
+.report-toggle:focus-visible { outline:2px solid #154dac; outline-offset:2px; }
 .report-row-warning { background:#fef2f2; font-weight:700; }
 .report-data-table tr[data-voucher-start=true] { border-top:2px solid #c4d1e1; }
 .report-number { text-align:right; font-variant-numeric:tabular-nums; }

@@ -44,6 +44,7 @@ try {
     GRANT SELECT ON report_settings, report_account_mappings, manual_register_rows, voucher_timeline TO ${quoted};
     GRANT INSERT, UPDATE ON report_settings, report_account_mappings, manual_register_rows, voucher_timeline TO ${quoted};
     GRANT SELECT ON migration_backup_history TO ${quoted};
+    GRANT SELECT, INSERT, UPDATE ON sales_executives TO ${quoted};
     GRANT DELETE ON company_members TO ${quoted};
   `);
   await client.query("COMMIT");

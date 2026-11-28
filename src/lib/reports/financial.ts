@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { Exact } from "@/lib/engine/model";
 import { displayDate } from "@/lib/validation";
+import { lineTypeLabel } from "@/lib/trade/model";
 import { detail, effective, inactiveDetail, movements, type AccountMovement, type Reader } from "./journal";
 import { dateCell, moneyCell, sum, textCell, type Cell, type ReportDocument, type ReportFilter, type ReportRow } from "./model";
 
@@ -52,6 +53,31 @@ function nonzero(row: AccountMovement, includeOpening: boolean) {
   return !new Exact(row.periodDr).isZero() || !new Exact(row.periodCr).isZero() || includeOpening && !opening(row).isZero();
 }
 
+export const accountTypes = ["asset","liability","equity","income","expense"] as const;
+export const typeName = (type: string) => type.charAt(0).toUpperCase() + type.slice(1);
+
+/** Each company lists its account types once, as collapsible headings carrying the type subtotal, with the accounts beneath. */
+export function companyWise(names: Named[], source: AccountMovement[], f: ReportFilter): Parts {
+  const columns = ["Account Code","Account Type","Account Head",...moneyColumns];
+  const rows = names.flatMap((name): ReportRow[] => {
+    const part = source.filter((row) => row.companyId === name.id);
+    const groups = accountTypes.flatMap((type): ReportRow[] => {
+      const accounts = part.filter((row) => row.type === type);
+      if (!accounts.length) return [];
+      const key = `${name.id}-${type}`;
+      return [{ key,style:"group",toggle:key,cells:[textCell(""),textCell(typeName(type)),textCell(""),...totals(accounts)] },
+        ...accounts.map((row): ReportRow => ({ key:row.id,parent:key,
+          cells:[textCell(row.code),textCell(""),textCell(row.name,reportLinks(row,f).period),...six(row,f)] }))];
+    });
+    return [{ key:name.id,style:"section",cells:[textCell(""),textCell(name.name),textCell("")] },...groups,
+      { key:`${name.id}-total`,style:"total",cells:[textCell(""),textCell(`${name.name} subtotal`),textCell(""),...totals(part)] }];
+  }).concat({ key:"grand",style:"total",cells:[textCell(""),textCell("Overall total"),textCell(""),...totals(source)] });
+  return { columns, rows, notes:[
+    "Each account type appears once per company with its subtotal. Select a type on screen to collapse or expand its accounts.",
+    "This aggregate includes the authorized companies shown above. Intercompany entries remain in the totals.",
+  ] };
+}
+
 export async function summaryReport(db: Reader, names: Named[], f: ReportFilter, mode: "mis" | "company-wise" | "combined-heads") : Promise<Parts> {
   const source = (await movements(db,names.map((n) => n.id),f)).filter((row) => nonzero(row,f.includeOpening));
   const columns = ["Account Code","Account Head","Account Type",...moneyColumns];
@@ -61,14 +87,7 @@ export async function summaryReport(db: Reader, names: Named[], f: ReportFilter,
   if (mode === "mis") return { columns, rows: source.length ? [...source.map(rowFor),{ key:"total",style:"total",cells:[textCell("Total"),textCell(""),textCell(""),...totals(source)] }] : [], notes: [
     "Opening and closing are net account balances shown on their debit or credit side. Period columns show posted movements.",
   ] };
-  if (mode === "company-wise") {
-    return { columns, rows: names.flatMap((name): ReportRow[] => {
-      const part = source.filter((row) => row.companyId === name.id);
-      return [{ key:name.id,style:"section",cells:[textCell(""),textCell(name.name),textCell("")] },...part.map(rowFor),
-        { key:`${name.id}-total`,style:"total",cells:[textCell(""),textCell(`${name.name} subtotal`),textCell(""),...totals(part)] }];
-    }).concat({ key:"grand",style:"total",cells:[textCell(""),textCell("Overall total"),textCell(""),...totals(source)] }),
-    notes:["This aggregate includes the authorized companies shown above. Intercompany entries remain in the totals."] };
-  }
+  if (mode === "company-wise") return companyWise(names,source,f);
   const groups = new Map<string, AccountMovement[]>();
   for (const row of source) {
     const key = row.group ? `mapping:${row.group}:${row.type}` : row.control ? `system:${row.control}:${row.type}` : `unmapped:${row.companyId}:${row.id}`;
@@ -114,7 +133,7 @@ function incomeGroups() {
   ]);
 }
 function profitClass(row: AccountMovement) {
-  if (row.control==="sales") return "Gross Sales";
+  if (["sales","service_income","freight_income"].includes(row.control ?? "")) return "Gross Sales";
   if (row.control==="sales_returns") return "Less: Sales Returns";
   if (row.control==="cogs") return "Cost of Goods Sold";
   if (row.type==="income") return "Other Income";
@@ -178,14 +197,18 @@ export async function balanceSheet(db: Reader, id: string, f: ReportFilter, year
 export async function journalDetail(db: Reader,names: Named[],f: ReportFilter,mode: "mis" | "general-ledger" | "party-ledger" | "cash-bank"):Promise<Parts> {
   const all = names.map((name)=>name.id);
   const party = mode==="party-ledger";
-  const columns = ["Date","Voucher Number","Voucher Type","Linked Invoice Number","Account Head","Customer / Supplier","Description / Narration","Debit","Credit","Running balance","Status"];
+  // Voucher Number Wise Detail also shows whether invoice lines were Product, Services or Freight / Transportation.
+  const typed = mode==="mis";
+  const pad = typed ? 1 : 0;
+  const columns = ["Date","Voucher Number","Voucher Type","Linked Invoice Number",...(typed ? ["Invoice Line Type"] : []),
+    "Account Head","Customer / Supplier","Description / Narration","Debit","Credit","Running balance","Status"];
   if (party && !f.party || mode==="general-ledger" && !f.account) return {columns,rows:[],notes:["Choose an account or party to view its ledger."]};
   const posted = ["posted","all"].includes(f.status) ? await detail(db,all,f,mode==="cash-bank",party) : [];
   const history = f.status!=="posted" ? await inactiveDetail(db,all,f) : [];
   const source = [...posted,...history].sort((a,b)=>a.day.localeCompare(b.day));
   const rows: ReportRow[] = source.map((r)=>({
     key:r.id,group:r.documentId,cells:[dateCell(r.day),textCell(r.number,`/workspace/${r.companyId}/accounting/vouchers/${r.documentId}`),
-      textCell(r.type),textCell(r.invoice),textCell(r.account),textCell(r.party),textCell(r.narration),moneyCell(r.debit),moneyCell(r.credit),
+      textCell(r.type),textCell(r.invoice),...(typed ? [textCell(lineTypeLabel(r.lineType))] : []),textCell(r.account),textCell(r.party),textCell(r.narration),moneyCell(r.debit),moneyCell(r.credit),
       r.status==="posted" ? moneyCell(party ? r.partyRunning : r.running) : textCell(""),textCell(r.status)],
   }));
   const notes = ["Running balances use all effective postings for the account or party, including activity omitted by display filters."];
@@ -197,16 +220,16 @@ export async function journalDetail(db: Reader,names: Named[],f: ReportFilter,mo
         coalesce(sum(l.debit-l.credit),0)::text AS closing FROM e JOIN journal_lines l ON l.company_id=e.company_id AND l.voucher_id=e.id
       WHERE l.party_id=${f.party} AND e.accounting_date<=${f.to}::date
     `);
-    rows.unshift({key:"opening",style:"section",cells:[textCell("Opening balance"),...Array<Cell>(8).fill(textCell("")),moneyCell(amounts.rows[0].opening)]});
-    rows.push({key:"closing",style:"section",cells:[textCell("Closing balance"),...Array<Cell>(8).fill(textCell("")),moneyCell(amounts.rows[0].closing)]});
+    rows.unshift({key:"opening",style:"section",cells:[textCell("Opening balance"),...Array<Cell>(8+pad).fill(textCell("")),moneyCell(amounts.rows[0].opening)]});
+    rows.push({key:"closing",style:"section",cells:[textCell("Closing balance"),...Array<Cell>(8+pad).fill(textCell("")),moneyCell(amounts.rows[0].closing)]});
   } else if (f.account && f.status==="posted") {
     const [selected] = await movements(db,all,{ ...f, party:undefined,voucher:undefined,invoice:undefined,voucherType:undefined,search:"" });
     if (selected) {
-      rows.unshift({ key:"opening",style:"section",cells:[textCell("Opening balance"),...Array<Cell>(8).fill(textCell("")),moneyCell(opening(selected))] });
-      rows.push({ key:"closing",style:"section",cells:[textCell("Closing balance"),...Array<Cell>(8).fill(textCell("")),moneyCell(closing(selected))] });
+      rows.unshift({ key:"opening",style:"section",cells:[textCell("Opening balance"),...Array<Cell>(8+pad).fill(textCell("")),moneyCell(opening(selected))] });
+      rows.push({ key:"closing",style:"section",cells:[textCell("Closing balance"),...Array<Cell>(8+pad).fill(textCell("")),moneyCell(closing(selected))] });
     }
   }
-  if (posted.length) rows.push({key:"total",style:"total",cells:[textCell("Period totals"),...Array<Cell>(6).fill(textCell("")),
+  if (posted.length) rows.push({key:"total",style:"total",cells:[textCell("Period totals"),...Array<Cell>(6+pad).fill(textCell("")),
     moneyCell(sum(posted,(row)=>row.debit)),moneyCell(sum(posted,(row)=>row.credit))]});
   return {columns,rows,notes};
 }

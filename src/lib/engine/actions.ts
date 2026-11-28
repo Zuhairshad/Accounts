@@ -5,7 +5,8 @@ import { z } from "zod";
 import { auditLogs, financialYears, periods } from "@/db/schema";
 import { AccountingError, accountDate, amount, manualVoucher, reasonText } from "./model";
 import { changeVoucher, repairLegacyParty, saveManual } from "./vouchers";
-import { accountSchema, configureAccounting, openingSchema, partySchema, saveAccount, saveOpening, saveParty } from "./masters";
+import { accountSchema, configureAccounting, openingSchema, partySchema, salesExecutiveSchema, saveAccount, saveOpening, saveParty, saveSalesExecutive } from "./masters";
+import { receiptSchema, recordReceipt } from "./receipts";
 import { allocatePayment, releaseAllocation } from "./settlement";
 import { bool, entries, identifier, optionalId, readJson, run, version, type FinanceState } from "./mutation";
 export type { FinanceState } from "./mutation";
@@ -55,6 +56,19 @@ export async function savePartyAction(_state: FinanceState, form: FormData) {
     if (opening) await saveOpening(tx, context, { ...opening, kind: "party", targetId: id });
     return { id };
   });
+}
+
+export async function saveSalesExecutiveAction(_state: FinanceState, form: FormData) {
+  return run(form, "sales_executive.save", () => salesExecutiveSchema.parse({
+    ...entries(form), id: form.get("id") || undefined, phone: form.get("phone") ?? "", active: bool.parse(form.get("active") ?? "true"),
+  }), async (tx, context, value) => ({ id: await saveSalesExecutive(tx, context, value) }));
+}
+
+export async function recordReceiptAction(_state: FinanceState, form: FormData) {
+  return run(form, "receipt.record", () => receiptSchema.parse({
+    ...entries(form), reference: form.get("reference") ?? "", narration: form.get("narration") ?? "",
+    salesExecutiveId: form.get("salesExecutiveId") || null,
+  }), recordReceipt);
 }
 
 export async function saveOpeningAction(_state: FinanceState, form: FormData) {

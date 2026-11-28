@@ -17,7 +17,7 @@ import {
   adjustmentDetail, inventorySummary, invoiceDetail, invoiceRegister, readItem, registerLines, returnedQuantities, stockLedger, tradeHistory, tradeOptions,
 } from "@/lib/trade/read";
 import {
-  adjustmentNames, invoiceSchema, isReturn, isSale, tradeNames, tradeType, tradeTypes, type AdjustmentCalculation,
+  adjustmentNames, invoiceSchema, isReturn, isSale, lineTypeNames, tradeNames, tradeType, tradeTypes, type AdjustmentCalculation,
   type InvoiceCalculation, type InvoiceInput, type TradeType,
 } from "@/lib/trade/model";
 import { InvoiceEditor, ItemFields } from "./editor";
@@ -65,7 +65,7 @@ export async function TradeRegister(screen: TradeScreen) {
         return <tr key={row.id}><td>{displayDate(row.date)}</td><td>
           <Link className="text-link" href={`${base}/invoices/${row.id}`}>{row.number ?? "Open draft"}</Link>
           {details.length > 0 && <details className="mt-1"><summary className="muted cursor-pointer">{details.length} item {details.length === 1 ? "line" : "lines"}</summary>
-            <ul className="mt-1">{details.map((line) => <li className="text-sm mb-1" key={line.lineNo}>{line.item} · {quantityLabel(line.qty)} {line.unit} · {line.amount === null ? "Draft line" : `PKR ${formatMoney(line.amount)}`}</li>)}</ul>
+            <ul className="mt-1">{details.map((line) => <li className="text-sm mb-1" key={line.lineNo}>{line.lineType !== "product" && `${lineTypeNames[line.lineType]} · `}{line.item} · {quantityLabel(line.qty)} {line.unit} · {line.amount === null ? "Draft line" : `PKR ${formatMoney(line.amount)}`}</li>)}</ul>
           </details>}
         </td><td>{tradeNames[row.type]}</td><td>{row.party}</td><td>{row.externalRef || "—"}</td>
         <td>{row.voucherDocumentId ? <Link className="text-link" href={`${accounting}/vouchers/${row.voucherDocumentId}`}>{row.voucher}</Link> : "—"}</td>
@@ -132,7 +132,7 @@ export async function TradeEntry(screen: TradeScreen, id?: string) {
   const blank: InvoiceInput = {
     type, date: baseDate, dueOn: "", partyId: original?.invoice.partyId ?? exchange?.invoice.partyId ?? "",
     externalRef: "", poRef: "", narration: "", notes: "", reason: "", originalInvoiceId: originalId, exchangeReturnId: exchangeId,
-    withholding: "0", duplicateReason: "", lines: [], payments: [],
+    withholding: "0", duplicateReason: "", lines: [], payments: [], salesExecutiveId: null,
   };
   const input = saved.success && existing ? saved.data : saved.success && copier ? {
     ...saved.data, date: baseDate, dueOn: "", externalRef: "", duplicateReason: "", exchangeReturnId: null,
@@ -178,7 +178,7 @@ export async function TradeDetail(screen: TradeScreen, id: string) {
   const db = getDb();
   const detailed = await invoiceDetail(db, companyId, id);
   if (!detailed) notFound();
-  const { invoice, party, voucher, original, exchange, lines, payments } = detailed;
+  const { invoice, party, voucher, original, exchange, lines, payments, executive } = detailed;
   const payload = invoice.payload as InvoiceInput | null;
   const calc = invoice.calculation as InvoiceCalculation | null;
   const archived = invoice.status === "void";
@@ -203,6 +203,7 @@ export async function TradeDetail(screen: TradeScreen, id: string) {
       <div><dt>Invoice date</dt><dd>{displayDate(invoice.date)}</dd></div>
       <div><dt>Status</dt><dd className="capitalize">{archived ? "Voided" : invoice.status}</dd></div>
       <div><dt>{isSale(invoice.type) ? "Customer" : "Supplier"}</dt><dd>{party?.name}</dd></div>
+      {invoice.type === "sale" && <div><dt>Sales executive</dt><dd>{executive?.name ?? "—"}</dd></div>}
       <div><dt>Accounting voucher</dt><dd>{voucher ? <Link className="text-link" href={`${accounting}/vouchers/${voucher.id}`}>{voucher.number}</Link> : "Unposted"}</dd></div>
       <div><dt>External reference</dt><dd>{invoice.externalRef || "—"}</dd></div>
       <div><dt>Purchase order</dt><dd>{invoice.poRef || "—"}</dd></div>
@@ -214,15 +215,15 @@ export async function TradeDetail(screen: TradeScreen, id: string) {
       {payload?.narration && <div><dt>Narration</dt><dd>{payload.narration}</dd></div>}
       {payload?.notes && <div><dt>Notes</dt><dd>{payload.notes}</dd></div>}
     </dl></section>
-    <PanelTable title="Item details" headers={["Item","Description","Quantity","Unit","Rate (PKR)","Discount","Tax","Line total","Disposition"]}>
-      {lines.length ? lines.map((line) => <tr key={line.lineNo}>
+    <PanelTable title="Item details" headers={["Line type","Item","Description","Quantity","Unit","Rate (PKR)","Discount","Tax","Line total","Disposition"]}>
+      {lines.length ? lines.map((line) => <tr key={line.lineNo}><td>{lineTypeNames[line.lineType]}</td>
         <td><Link className="text-link" href={`${base}/inventory/${line.itemId}`}>{line.item}</Link></td><td>{line.description}</td>
         <td>{quantityLabel(line.qty)}</td><td>{line.unit}</td><td>{quantityLabel(line.rate)}</td>
         <Money value={line.discount} /><Money value={line.tax} /><Money value={line.amount} />
         <td>{invoice.type === "sale_return" ? line.disposition : "—"}</td>
       </tr>) : payload?.lines.map((line, index) => {
         const item = options?.goods.find((option) => option.id === line.itemId);
-        return <tr key={index}><td>{item?.name}</td><td>{line.description}</td><td>{line.quantity}</td><td>{item?.unit}</td><td>{line.rate}</td>
+        return <tr key={index}><td>{lineTypeNames[line.lineType ?? "product"]}</td><td>{item?.name}</td><td>{line.description}</td><td>{line.quantity}</td><td>{item?.unit}</td><td>{line.rate}</td>
           <td>{line.discount}</td><td>{line.tax}</td><td>Unposted</td><td>{line.disposition}</td></tr>;
       })}
     </PanelTable>

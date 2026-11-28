@@ -140,6 +140,16 @@ export const parties = pgTable("parties", {
   check("valid_party_credit", sql`${t.creditDays} between 0 and 3650 and ${t.creditLimit} >= 0 and ${t.creditLimit} <> 'NaN'`),
 ]);
 
+/** Company-local sales staff credited with sale invoices and customer receipts. Deactivation keeps history linked. */
+export const salesExecutives = pgTable("sales_executives", {
+  id: id(), companyId: companyId(), name: text("name").notNull(), phone: text("phone").default("").notNull(),
+  active: boolean("active").default(true).notNull(), version: revision(), createdAt: createdAt(),
+}, (t) => [
+  unique("sales_executive_company_id").on(t.companyId, t.id),
+  unique("sales_executive_company_name").on(t.companyId, t.name),
+  check("sales_executive_name_present", sql`length(btrim(${t.name})) between 1 and 120`),
+]);
+
 export const units = pgTable("inventory_units", {
   id: id(), companyId: companyId(), name: text("name").notNull(),
 }, (t) => [unique("unit_company_id").on(t.companyId, t.id), unique("unit_company_name").on(t.companyId, t.name)]);
@@ -186,6 +196,7 @@ export const voucherDocuments = pgTable("voucher_documents", {
   source: text("source").default("manual").notNull(),
   sourceId: uuid("source_id"),
   openingPartyId: uuid("opening_party_id"), openingAccountId: uuid("opening_account_id"),
+  salesExecutiveId: uuid("sales_executive_id"),
   version: revision(), createdAt: createdAt(),
 }, (t) => [
   unique("voucher_document_company_id").on(t.companyId, t.id),
@@ -197,6 +208,8 @@ export const voucherDocuments = pgTable("voucher_documents", {
   foreignKey({ columns: [t.companyId, t.currentVoucherId], foreignColumns: [vouchers.companyId, vouchers.id] }),
   foreignKey({ columns: [t.companyId, t.openingPartyId], foreignColumns: [parties.companyId, parties.id] }),
   foreignKey({ columns: [t.companyId, t.openingAccountId], foreignColumns: [accounts.companyId, accounts.id] }),
+  foreignKey({ columns: [t.companyId, t.salesExecutiveId], foreignColumns: [salesExecutives.companyId, salesExecutives.id] }),
+  index("voucher_document_sales_executive").on(t.companyId, t.salesExecutiveId),
   check("voucher_document_source_values", sql`${t.source} in ('manual','opening','invoice','inventory_adjustment')`),
   check("voucher_document_link", sql`(${t.source} = 'manual' and ${t.sourceId} is null and ${t.openingPartyId} is null and ${t.openingAccountId} is null)
     or (${t.source} = 'opening' and ${t.type} = 'opening' and ${t.sourceId} is null and num_nonnulls(${t.openingPartyId}, ${t.openingAccountId}) = 1)
@@ -247,7 +260,7 @@ export const invoices = pgTable("invoices", {
   exchangeReturnId: uuid("exchange_return_id"), createdBy: uuid("created_by").references(() => users.id),
   duplicateReason: text("duplicate_reason").default("").notNull(),
   payload: jsonb("payload"), calculation: jsonb("calculation"), effectHash: text("effect_hash"),
-  status: documentStatus("status").default("draft").notNull(),
+  status: documentStatus("status").default("draft").notNull(), salesExecutiveId: uuid("sales_executive_id"),
   createdAt: createdAt(), version: revision(),
 }, (t) => [
   unique("invoice_company_id").on(t.companyId, t.id),
@@ -261,6 +274,8 @@ export const invoices = pgTable("invoices", {
   foreignKey({ columns: [t.companyId, t.voucherId], foreignColumns: [vouchers.companyId, vouchers.id] }),
   foreignKey({ columns: [t.companyId, t.originalInvoiceId], foreignColumns: [t.companyId, t.id] }),
   foreignKey({ columns: [t.companyId, t.exchangeReturnId], foreignColumns: [t.companyId, t.id] }),
+  foreignKey({ columns: [t.companyId, t.salesExecutiveId], foreignColumns: [salesExecutives.companyId, salesExecutives.id] }),
+  index("invoice_sales_executive").on(t.companyId, t.salesExecutiveId),
   check("trade_party_amount_range", sql`(${t.partyAmount} is null or ${t.partyAmount} between 0 and ${t.total}) and
     (${t.appliedCredit} is null or (${t.partyAmount} is not null and ${t.appliedCredit} between 0 and ${t.partyAmount}))`),
   check("posted_invoice_metadata", sql`${t.status} <> 'posted' or (${t.number} is not null and ${t.voucherId} is not null)`),
@@ -275,7 +290,7 @@ export const invoiceLines = pgTable("invoice_lines", {
   unitLabel: text("unit_label").default("").notNull(), description: text("description").default("").notNull(),
   subtotal: money("subtotal").default("0").notNull(), discount: money("discount").default("0").notNull(),
   tax: money("tax").default("0").notNull(), inventoryCost: money("inventory_cost").default("0").notNull(),
-  disposition: text("disposition").default("saleable").notNull(),
+  disposition: text("disposition").default("saleable").notNull(), lineType: text("line_type").default("product").notNull(),
 }, (t) => [
   unique("invoice_line_company_id").on(t.companyId, t.id),
   uniqueIndex("legacy_invoice_line_number").on(t.companyId, t.invoiceId, t.lineNo).where(sql`${t.postingVoucherId} is null`),
@@ -284,6 +299,8 @@ export const invoiceLines = pgTable("invoice_lines", {
   foreignKey({ columns: [t.companyId, t.invoiceId], foreignColumns: [invoices.companyId, invoices.id] }),
   foreignKey({ columns: [t.companyId, t.itemId], foreignColumns: [items.companyId, items.id] }),
   check("invoice_line_values", sql`${t.lineNo} > 0 and ${t.qty} > 0 and ${t.rate} >= 0 and ${t.amount} >= 0`),
+  check("invoice_line_type", sql`${t.lineType} in ('product','services','freight')`),
+  index("invoice_line_posting").on(t.companyId, t.postingVoucherId),
 ]);
 
 export const stockMoves = pgTable("stock_movements", {

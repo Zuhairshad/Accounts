@@ -1,7 +1,7 @@
 import { and, eq, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Transaction } from "../../db";
-import { accounts, auditLogs, companySettings, deletedRecords, journalLines, openingBalances, parties, restorationHistory, voucherDocuments } from "../../db/schema";
+import { accounts, auditLogs, companySettings, deletedRecords, journalLines, openingBalances, parties, restorationHistory, salesExecutives, voucherDocuments } from "../../db/schema";
 import { AccountingError, Exact, accountDate, amount, reasonText } from "./model";
 import { approvalRequired, getDocument, publishDocument, recordChange, type FinanceContext } from "./vouchers";
 import { journalSnapshot, openPeriod } from "./posting";
@@ -25,6 +25,11 @@ export const partySchema = z.object({
   ntn: z.string().trim().max(60), strn: z.string().trim().max(60),
   creditDays: z.coerce.number().int().min(0).max(3650), creditLimit: amount, notes: z.string().trim().max(1000),
   active: z.boolean(),
+});
+
+export const salesExecutiveSchema = z.object({
+  id: z.uuid().optional(), version: z.coerce.number().int().min(0),
+  name: z.string().trim().min(1, "Enter the sales executive name.").max(120), phone: z.string().trim().max(60), active: z.boolean(),
 });
 
 export async function saveAccount(tx: Transaction, context: FinanceContext, parsed: z.infer<typeof accountSchema>) {
@@ -78,6 +83,23 @@ export async function saveParty(tx: Transaction, context: FinanceContext, parsed
     ? await tx.update(parties).set({ ...values, version: version + 1 }).where(eq(parties.id, existing.id)).returning()
     : await tx.insert(parties).values({ ...values, companyId }).returning();
   await tx.insert(auditLogs).values({ companyId, actorId, action: "party.saved", data: { before: existing, after: saved } });
+  return saved.id;
+}
+
+/** Executives are never deleted. Deactivation removes them from new documents and keeps their reported history. */
+export async function saveSalesExecutive(tx: Transaction, context: FinanceContext, parsed: z.infer<typeof salesExecutiveSchema>) {
+  const { companyId, actorId } = context;
+  const { id, version, ...values } = parsed;
+  context.require(id ? "edit" : "create");
+  const [existing] = id ? await tx.select().from(salesExecutives).where(and(eq(salesExecutives.companyId, companyId), eq(salesExecutives.id, id))) : [];
+  if (id && (!existing || existing.version !== version)) throw new AccountingError("This sales executive changed. Reload before saving.");
+  const [duplicate] = await tx.select({ id: salesExecutives.id }).from(salesExecutives)
+    .where(and(eq(salesExecutives.companyId, companyId), sql`lower(${salesExecutives.name})=lower(${values.name})`));
+  if (duplicate && duplicate.id !== id) throw new AccountingError("A sales executive with this name already exists.");
+  const [saved] = existing
+    ? await tx.update(salesExecutives).set({ ...values, version: version + 1 }).where(eq(salesExecutives.id, existing.id)).returning()
+    : await tx.insert(salesExecutives).values({ ...values, companyId }).returning();
+  await tx.insert(auditLogs).values({ companyId, actorId, action: "sales_executive.saved", data: { before: existing, after: saved } });
   return saved.id;
 }
 

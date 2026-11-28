@@ -20,6 +20,8 @@ const starterAccounts = [
   ["1150", "Input Tax Receivable", "asset", "input_tax"], ["1160", "Withholding Receivable", "asset", "withholding_receivable"],
   ["2150", "Sales Tax Payable", "liability", "output_tax"], ["2160", "Withholding Payable", "liability", "withholding_payable"],
   ["5160", "Purchase Return Variance", "expense", "purchase_return_variance"], ["5170", "Damaged and Lost Inventory", "expense", "inventory_loss"],
+  ["4020", "Service Income", "income", "service_income"], ["4030", "Freight and Transportation Income", "income", "freight_income"],
+  ["5180", "Services Expense", "expense", "service_expense"], ["5190", "Freight and Transportation Expense", "expense", "freight_expense"],
 ] as const;
 
 export async function insertCompany(tx: Transaction, name: string) {

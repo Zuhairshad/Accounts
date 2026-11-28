@@ -10,8 +10,8 @@ export function RangeForm({ years, current, range }: { years?: Year[]; current?:
   const [selection, setSelection] = useState(current ?? "");
   const [dates, setDates] = useState(range);
 
-  return <form className="range-form panel" method="get">
-    <div className="range-title"><CalendarDays size={20} /><strong>Reporting period</strong></div>
+  return <form className="range-form panel rep-range" method="get">
+    <div className="range-title"><span className="rep-range-icon" aria-hidden><CalendarDays size={17} /></span><strong>Reporting period</strong></div>
     {years && <label className="field">Financial year<span className="select-wrap"><select name="year" value={selection} onChange={(event) => {
       const id = event.target.value;
       setSelection(id);

@@ -1,21 +1,29 @@
 import Link from "next/link";
+import { ArrowLeft,SearchX } from "lucide-react";
 import { displayDate } from "@/lib/validation";
 import { isRegister,type ReportDocument,type ReportRow } from "@/lib/reports/model";
 import { printPlan } from "@/lib/reports/print";
 import { PrintButton } from "./print-button";
 import { ReportRows } from "./report-rows";
 
+/** Statements whose plain account rows sit under section headings, so the screen view indents them. */
+const statements=new Set(["profit-loss","balance-sheet","company-wise","combined-heads"]);
+
+/** A column is right-aligned on screen when its figures are amounts, quantities or counts. */
+const numericColumn=(rows:ReportRow[],index:number)=>rows.some((row)=>["money","quantity","integer"].includes(row.cells[index]?.kind ?? ""));
+
 export function ReportTable({document,rows}:{document:ReportDocument;rows:ReportRow[]}) {
   const register=isRegister(document.id);
-  return <section className={`panel data-panel ${register?"register-paper":""}`}>
+  return <section className={`panel data-panel ${register?"register-paper rep-paper":"rep-table-card"}`}>
     {register && <h2 className="register-title">{document.title}</h2>}
-    <div className="table-scroll"><table className={register?"register-print-table":"report-data-table"}>
+    <div className="table-scroll"><table className={register?"register-print-table":`report-data-table rep-table${statements.has(document.id)?" rep-statement":""}`}>
       {register && document.layout && <colgroup>{document.layout.widths.map((width,i)=><col key={i} style={{width:`${width/document.layout!.widths.reduce((a,b)=>a+b,0)*100}%`}} />)}</colgroup>}
-      <thead><tr>{document.columns.map((col)=><th scope="col" key={col}>{col}</th>)}</tr></thead>
+      <thead><tr>{document.columns.map((col,i)=><th scope="col" key={col} className={!register && numericColumn(document.rows,i) ? "report-number" : undefined}>{col}</th>)}</tr></thead>
       <ReportRows columns={document.columns.length} rows={rows} />
       {register && rows.length===0 && <tbody>{Array.from({length:6},(_,i)=><tr key={i}>{document.columns.map((_,j)=><td key={j}>&nbsp;</td>)}</tr>)}</tbody>}
     </table></div>
-    {!rows.length && !register && <div className="empty"><strong>No transactions match the selected filters</strong></div>}
+    {!rows.length && !register && <div className="empty rep-empty"><span className="empty-icon" aria-hidden><SearchX size={19} /></span>
+      <strong>No transactions match the selected filters</strong><p>Widen the dates or clear a filter to see more rows.</p></div>}
   </section>;
 }
 
@@ -24,7 +32,8 @@ export function PrintableReport({document,returnHref}:{document:ReportDocument;r
   const register=isRegister(document.id);
   return <div className="report-preview">
     <style>{`@page { size: A4 ${paper.landscape?"landscape":"portrait"}; margin:0; }`}</style>
-    <div className="finance-toolbar print-hide mb-4"><Link className="text-link" href={returnHref}>Back to report</Link><PrintButton /></div>
+    <div className="rep-preview-bar print-hide"><Link className="button button-outline button-small" href={returnHref}><ArrowLeft size={15} aria-hidden />Back to report</Link>
+      <span className="muted">Print preview · {document.title}</span><PrintButton /></div>
     {paper.pages.map((rows,index)=><article key={index} className="report-preview-page" style={{width:`${paper.width}pt`,minHeight:`${paper.height}pt`,padding:`${paper.margin}pt`,fontSize:`${paper.font}pt`}}>
       <h1 className={register?"register-title":"report-preview-title"}>{document.title}</h1>
       {!register && <div className="report-preview-meta">

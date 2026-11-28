@@ -14,10 +14,11 @@ export function ReportFilters({id,report,query}:{id:ReportId;report:Awaited<Retu
   const stockFilter=["stock-ledger","inventory-valuation","adjustments"].includes(id);
   const names=new Map(all.map((entry)=>[entry.id,entry.name]));
   const companyPrefix=(company:string)=>report.selection.length>1 ? `${names.get(company)} · ` : "";
-  return <form method="get" className="panel report-filters print-hide">
-    <div className="finance-toolbar text-blue-800"><CalendarDays size={19} /><strong>Report filters</strong></div>
-    <div className="form-grid report-filter-grid mt-3">
-      <label className="field">Company<select name="company" defaultValue={cross?"all":report.selection[0].id}>
+  return <form method="get" className="panel report-filters rep-filters print-hide">
+    <div className="rep-filters-head"><span className="rep-filters-title"><CalendarDays size={17} aria-hidden /><strong>Report filters</strong></span>
+      <span className="muted">Applied dates {filter.from} to {filter.to}</span></div>
+    <div className="report-filter-grid rep-filter-grid">
+      <label className="field rep-field-company">Company<select name="company" defaultValue={cross?"all":report.selection[0].id}>
         {combined && active.permissions.includes("view_combined") && <option value="all">All authorized report companies</option>}
         {all.map((entry)=><option key={entry.id} value={entry.id}>{entry.name}</option>)}
       </select></label>
@@ -62,9 +63,8 @@ export function ReportFilters({id,report,query}:{id:ReportId;report:Awaited<Retu
         <option value="posted">Posted only</option><option value="draft">Draft audit</option><option value="void">Voided audit</option><option value="all">All audit states</option>
       </select></label><label className="field">Historical system time (PKT)<input type="datetime-local" name="recordedAt"
         defaultValue={filter.recordedAt?new Date(new Date(filter.recordedAt).getTime()+5*3600000).toISOString().slice(0,16):""} /></label></>}
-      {!["trial-balance","balance-sheet","profit-loss"].includes(id) && <label className="field">Search<input name="q" defaultValue={filter.search} maxLength={120} /></label>}
+      {!["trial-balance","balance-sheet","profit-loss"].includes(id) && <label className="field rep-field-search">Search<input name="q" defaultValue={filter.search} maxLength={120} /></label>}
+      <div className="rep-filter-submit"><Button type="submit" variant="outline"><Filter size={16} /> Apply filters</Button></div>
     </div>
-    <div className="finance-toolbar mt-4"><Button type="submit" variant="outline"><Filter size={16} /> Apply filters</Button>
-      <span className="muted">Applied dates {filter.from} to {filter.to}</span></div>
   </form>;
 }

@@ -14,6 +14,9 @@ type Phase="Unsaved changes"|"Saving"|"Saved"|"Save failed"|"Conflict detected";
 type Grid=Data & {phase:Phase;message?:string;sequence:number};
 type Operation={id:string;version:number;requestKey:string;operation:"save"|"void"|"restore";payload?:RegisterPayload;reason?:string;sequence:number};
 type Option={id:string;name:string};
+/** Status pill colour for each save phase. */
+const phaseTone:Record<Phase,string>={"Unsaved changes":"rep-phase-pending","Saving":"rep-phase-pending","Saved":"status-posted",
+  "Save failed":"rep-phase-failed","Conflict detected":"rep-phase-failed"};
 const fresh=(row:Data):Grid=>({...row,phase:"Saved",sequence:0});
 const nextDelay=(ms:number)=>new Promise((resolve)=>setTimeout(resolve,ms));
 
@@ -159,13 +162,13 @@ export function RegisterGrid({companyId,kind,rows,contacts,accounts,stock,linkab
     const cell=next && table.current?.querySelector<HTMLElement>(`[data-row="${next}"][data-column="${nextColumn}"]`);
     if (cell) {event.preventDefault();cell.focus();}
   }
-  return <section className="panel print-hide">
-    <div className="page-heading">
+  return <section className="panel table-card rep-grid print-hide">
+    <div className="table-card-head">
       <div><h2>{deleted ? "Deleted register rows" : "Register-only entries and drafts"}</h2>
-        <p className="muted mt-2">Edits save automatically. Use Enter or Control with the arrow keys to move between cells.</p></div>
-      {rights.create && !deleted && <Button onClick={add}><Plus size={16} /> Add row</Button>}
+        <p className="muted rep-sub">Edits save automatically. Use Enter or Control with the arrow keys to move between cells.</p></div>
+      {rights.create && !deleted && <Button onClick={add} className="button-small"><Plus size={16} /> Add row</Button>}
     </div>
-    <div className="table-scroll mt-4"><table className="entry-table register-entry" ref={table} onKeyDown={navigate}>
+    <div className="table-scroll"><table className="entry-table register-entry" ref={table} onKeyDown={navigate}>
       <thead><tr>{registerColumns[kind].map((name)=><th key={name}>{name}</th>)}<th>Save status and actions</th></tr></thead>
       <tbody>{items.map((row,index)=>{
         const disabled=deleted || !(row.version?rights.edit:rights.create);
@@ -182,23 +185,23 @@ export function RegisterGrid({companyId,kind,rows,contacts,accounts,stock,linkab
           {isDay ? <><td>{input("type",2)}</td><td>{description}{input("ref",8)}</td><td>{input("first",4)}</td>
             <td>{input("second",5)}</td><td>{balances[row.id] ?? "—"}</td></> : <>
             <td>{input("ref",2)}</td><td>{description}</td><td>{tradeType}</td><td>{input("first",5)}</td><td>{input("second",6)}</td></>}
-          <td><div className="finance-toolbar">
-            <span role={row.phase==="Conflict detected" || row.phase==="Save failed"?"alert":"status"} className={row.phase==="Save failed" || row.phase==="Conflict detected"?"form-error":"muted"}>
+          <td><div className="finance-toolbar rep-row-actions">
+            <span role={row.phase==="Conflict detected" || row.phase==="Save failed"?"alert":"status"} className={`status ${phaseTone[row.phase]}`}>
               {row.phase}{row.phase==="Saved" && row.status==="draft" ? " · Draft" : ""}</span>
-            {row.phase==="Save failed" && <Button type="button" variant="outline" onClick={()=>void save(row.id)}><RefreshCw size={15} /> Retry</Button>}
-            {row.phase==="Conflict detected" && <Button variant="outline" onClick={()=>window.location.reload()}>Reload</Button>}
-            {!deleted && row.phase==="Saved" && row.status==="saved" && rights.edit && <Button variant="outline"
+            {row.phase==="Save failed" && <Button type="button" variant="outline" className="button-small" onClick={()=>void save(row.id)}><RefreshCw size={15} /> Retry</Button>}
+            {row.phase==="Conflict detected" && <Button variant="outline" className="button-small" onClick={()=>window.location.reload()}>Reload</Button>}
+            {!deleted && row.phase==="Saved" && row.status==="saved" && rights.edit && <Button variant="outline" className="button-small"
               onClick={()=>{setEntryMode("attach");setChosen(row.id);dialog.current?.showModal();}}>Accounting entry</Button>}
-            {!deleted && rights.delete && row.version>0 && row.phase==="Saved" && <Button variant="outline" onClick={()=>lifecycle(row,"void")}>Delete row</Button>}
-            {deleted && rights.restore && row.phase==="Saved" && <Button variant="outline" onClick={()=>lifecycle(row,"restore")}>Restore row</Button>}
+            {!deleted && rights.delete && row.version>0 && row.phase==="Saved" && <Button variant="outline" className="button-small" onClick={()=>lifecycle(row,"void")}>Delete row</Button>}
+            {deleted && rights.restore && row.phase==="Saved" && <Button variant="outline" className="button-small" onClick={()=>lifecycle(row,"restore")}>Restore row</Button>}
             {row.message && <small className="form-error">{row.message}</small>}
           </div></td>
         </tr>;
       })}</tbody>
     </table></div>
-    {!items.length && <p className="muted mt-4">{deleted ? "No deleted rows for this selection." : "Add a row to start an informational entry."}</p>}
+    {!items.length && <p className="table-empty rep-grid-empty">{deleted ? "No deleted rows for this selection." : "Add a row to start an informational entry."}</p>}
     <dialog className="register-dialog" ref={dialog} onClose={()=>setChosen(undefined)}>
-      <div className="page-heading"><h2>Accounting entry</h2><Button variant="outline" onClick={()=>dialog.current?.close()}>Close</Button></div>
+      <div className="rep-dialog-head"><h2>Accounting entry</h2><Button variant="outline" className="button-small" onClick={()=>dialog.current?.close()}>Close</Button></div>
       {form && <FinanceForm key={form.id} action={financialRegisterAction} companyId={companyId} id={form.id} version={form.version} submit={[{label:"Confirm accounting link"}]}>
         <input type="hidden" name="kind" value={kind} />
         <label className="field">Workflow<select name="operation" value={entryMode} onChange={(event)=>setEntryMode(event.target.value)}>

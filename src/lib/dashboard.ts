@@ -59,16 +59,33 @@ async function results(tx: Transaction, companyId: string, from: string, to: str
   return row;
 }
 
-export async function loadOverview(companyId: string, range: { from: string; to: string }, months: number) {
+/** Money received from customers: receivable credits on vouchers that also debit a cash or bank account. */
+async function collections(tx: Transaction, companyId: string, from: string, to: string) {
+  const [row] = (await tx.execute<{ amount: string; clients: string }>(sql`
+    SELECT coalesce(sum(l.credit),0)::text AS amount,count(DISTINCT l.party_id)::text AS clients
+    FROM effective_vouchers e JOIN journal_lines l ON l.company_id=e.company_id AND l.voucher_id=e.id
+    JOIN accounts a ON a.company_id=l.company_id AND a.id=l.account_id
+    WHERE e.company_id=${companyId} AND e.accounting_date BETWEEN ${from}::date AND ${to}::date AND a.control='receivable' AND l.credit>0
+      AND EXISTS(SELECT 1 FROM journal_lines c JOIN accounts ca ON ca.company_id=c.company_id AND ca.id=c.account_id
+        WHERE c.company_id=e.company_id AND c.voucher_id=e.id AND ca.liquidity IS NOT NULL AND c.debit>0)`)).rows;
+  return row;
+}
+
+export type OverviewOptions = { today: string; calendar?: string; recent: number; todayOnly: boolean };
+
+export async function loadOverview(companyId: string, range: { from: string; to: string }, months: number, options: OverviewOptions) {
   return getDb().transaction(async (tx) => {
     const { from, to } = range;
     const span = Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000) + 1;
     const previousTo = addDays(from, -1);
     const previousFrom = addDays(previousTo, -(span - 1));
 
-    const [now, before, current, prior] = await Promise.all([
+    const { today } = options;
+    const [now, before, current, prior, collectedToday, collectedMonth, monthOpening] = await Promise.all([
       balances(tx, companyId, to), balances(tx, companyId, previousTo),
       results(tx, companyId, from, to), results(tx, companyId, previousFrom, previousTo),
+      collections(tx, companyId, today, today), collections(tx, companyId, monthStart(today), today),
+      balances(tx, companyId, addDays(monthStart(today), -1)),
     ]);
     const netSales = d(current.sales);
     const grossProfit = netSales.minus(current.cogs);
@@ -124,18 +141,25 @@ export async function loadOverview(companyId: string, range: { from: string; to:
           JOIN parties p ON p.company_id=l.company_id AND p.id=l.party_id
           WHERE e.company_id=${companyId} AND p.type='supplier' AND e.accounting_date<=${to}::date GROUP BY l.party_id HAVING sum(l.credit-l.debit)>0) x)::text AS suppliers`)).rows[0];
 
-    // Calendar: postings per day in the month of the "to" date.
-    const calendarMonth = monthStart(to);
+    // Calendar: postings per day in the chosen month, by default the month of the "to" date.
+    const calendarMonth = options.calendar ?? monthStart(to);
     const days = (await tx.execute<{ day: string; count: string }>(sql`
       SELECT e.accounting_date::text AS day,count(*)::text AS count FROM effective_vouchers e
       WHERE e.company_id=${companyId} AND e.accounting_date BETWEEN ${calendarMonth}::date AND ${addDays(addMonths(calendarMonth, 1), -1)}::date
       GROUP BY 1`)).rows;
 
-    const recent = (await tx.execute<{ id: string; number: string; day: string; type: string; narration: string; amount: string }>(sql`
-      SELECT e.document_id AS id,e.number,e.accounting_date::text AS day,e.type::text AS type,e.narration,
-        (SELECT coalesce(sum(l.debit),0) FROM journal_lines l WHERE l.company_id=e.company_id AND l.voucher_id=e.id)::text AS amount
+    // Latest postings with the first party on each voucher, for the recent activity table.
+    const recentRows = (await tx.execute<{ id: string; number: string; day: string; type: string; narration: string; reference: string;
+      created: string; amount: string; party: string | null }>(sql`
+      SELECT e.document_id AS id,e.number,e.accounting_date::text AS day,e.type::text AS type,e.narration,e.reference,
+        to_char(e.created_at AT TIME ZONE 'Asia/Karachi','HH12:MI AM') AS created,
+        (SELECT coalesce(sum(l.debit),0) FROM journal_lines l WHERE l.company_id=e.company_id AND l.voucher_id=e.id)::text AS amount,
+        (SELECT p.name FROM journal_lines l JOIN parties p ON p.company_id=l.company_id AND p.id=l.party_id
+          WHERE l.company_id=e.company_id AND l.voucher_id=e.id ORDER BY l.line_no LIMIT 1) AS party
       FROM effective_vouchers e WHERE e.company_id=${companyId} AND e.accounting_date<=${to}::date
-      ORDER BY e.accounting_date DESC,e.created_at DESC,e.document_id DESC LIMIT 6`)).rows;
+        AND (${options.todayOnly}::boolean IS FALSE OR e.accounting_date=${today}::date)
+      ORDER BY e.accounting_date DESC,e.created_at DESC,e.document_id DESC LIMIT ${options.recent + 1}`)).rows;
+    const recent = recentRows.slice(0, options.recent);
 
     // Receivables aging from the same allocation-based logic as the Invoice Aging report.
     const open = (await invoiceOutstanding(tx, companyId, to)).filter((row) => row.type === "sale" && d(row.outstanding).gt(0));
@@ -166,7 +190,7 @@ export async function loadOverview(companyId: string, range: { from: string; to:
     return {
       range, previous: { from: previousFrom, to: previousTo },
       cash: { value: money(d(now.cash)), change: change(d(now.cash), d(before.cash)), trend: cashTrend.map((row) => ({ month: row.month, label: monthLabel(row.month), value: money(d(row.balance)) })) },
-      receivable: { value: money(d(now.receivable)), change: change(d(now.receivable), d(before.receivable)), customers: Number(counts.customers) },
+      receivable: { value: money(d(now.receivable)), previous: money(d(before.receivable)), change: change(d(now.receivable), d(before.receivable)), customers: Number(counts.customers) },
       payable: { value: money(d(now.payable)), change: change(d(now.payable), d(before.payable)), suppliers: Number(counts.suppliers) },
       stock: { value: money(d(now.stock)), change: change(d(now.stock), d(before.stock)) },
       sales: { value: money(netSales), change: change(netSales, d(prior.sales)) },
@@ -174,7 +198,10 @@ export async function loadOverview(companyId: string, range: { from: string; to:
       margin: netSales.gt(0) ? grossProfit.div(netSales).times(100).toDecimalPlaces(1).toNumber() : null,
       counts: { vouchers: Number(counts.vouchers), invoices: Number(counts.invoices) },
       monthly, calendar: { month: calendarMonth, days: Object.fromEntries(days.map((row) => [row.day, Number(row.count)])) },
-      recent: recent.map((row) => ({ ...row, amount: money(d(row.amount)) })),
+      recent: recent.map((row) => ({ ...row, amount: money(d(row.amount)) })), moreRecent: recentRows.length > options.recent,
+      collections: { today: money(d(collectedToday.amount)), clients: Number(collectedToday.clients), month: money(d(collectedMonth.amount)),
+        owedAtMonthStart: money(d(monthOpening.receivable)),
+        rate: d(monthOpening.receivable).gt(0) ? Math.min(100, d(collectedMonth.amount).div(monthOpening.receivable).times(100).toDecimalPlaces(0).toNumber()) : null },
       aging, overdue: { count: overdue.length, amount: money(overdue.reduce((total, row) => total.plus(row.outstanding), d(0))) },
       attention: { drafts: Number(attention.drafts), submitted: Number(attention.submitted), draftInvoices: Number(attention.draftInvoices),
         unlinked: Number(attention.unlinked), openPeriod: attention.openPeriod, year: attention.year },

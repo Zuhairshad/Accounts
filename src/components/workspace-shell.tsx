@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { Bell, Building2, CalendarDays, ChevronDown, Keyboard, ReceiptText, Package, Files, ChartNoAxesCombined, CircleUserRound, ClipboardList, LayoutDashboard, LibraryBig, Menu, Search, Settings, X } from "lucide-react";
+import { Bell, Building2, CalendarDays, ChevronDown, ChevronLeft, Keyboard, ReceiptText, Package, Files, ChartNoAxesCombined, ClipboardList, LayoutDashboard, LibraryBig, Menu, Search, Settings, X } from "lucide-react";
 import { Brand } from "./brand";
 import { Logout } from "./logout";
 
@@ -99,7 +99,7 @@ export function WorkspaceShell({ actor, companies, manageable, showCombined, not
   return <div className={`workspace ${collapsed ? "sidebar-collapsed" : ""} ${mobile ? "sidebar-open" : ""}`}>
     <a className="skip-link" href="#content">Skip to content</a>
     <aside className="sidebar">
-      <div className="sidebar-brand"><Brand /><button title="Close navigation" className="mobile-close icon-button" onClick={() => setMobile(false)}><X size={21} /></button></div>
+      <div className="sidebar-brand"><div><Brand /><p className="sidebar-tagline">Multi-company accounting</p></div><button title="Close navigation" className="mobile-close icon-button" onClick={() => setMobile(false)}><X size={21} /></button></div>
       <div className="sidebar-menu">
         {destinations.filter((item) => item.visible).map(({ title, href, icon: Icon }) => {
           const active = pathname === href && (title !== "Company settings" || href.endsWith("/settings"));
@@ -109,12 +109,22 @@ export function WorkspaceShell({ actor, companies, manageable, showCombined, not
           </Destination>;
         })}
       </div>
-      <div className="sidebar-footer"><span>V4.0</span></div>
+      <div className="sidebar-footer">
+        <button className="sidebar-collapse desktop-toggle" type="button" title={collapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={!collapsed} onClick={() => setCollapsed(!collapsed)}>
+          <ChevronLeft size={17} /><span>Collapse</span></button>
+        <details className="top-menu user-menu"><summary className="user-card" aria-label="User profile">
+          <span className="user-avatar" aria-hidden>{actor.name.split(/\s+/).filter(Boolean).slice(0, 2).map((word) => word[0]).join("").toUpperCase()}</span>
+          <span className="user-text"><strong>{actor.name}</strong><small>{actor.superAdmin ? "Super Admin" : actor.username}</small></span><ChevronDown size={15} /></summary>
+          <div className="menu-panel">
+            <strong>{actor.name}</strong><p className="muted">{actor.username}</p>
+            <Link href="/password" className="text-link block my-3">Change password</Link><Logout />
+          </div></details>
+        <span className="sidebar-version">V4.0</span>
+      </div>
     </aside>
     <div className="workspace-body">
       <header className="topbar">
         <div className="topbar-left">
-          <button className="icon-button desktop-toggle" title={collapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={!collapsed} onClick={() => setCollapsed(!collapsed)}><Menu size={20} /></button>
           <button className="icon-button mobile-toggle" title="Open navigation" aria-expanded={mobile} onClick={() => setMobile(true)}><Menu size={20} /></button>
           <div className="company-select">
             <Building2 size={17} /><select aria-label="Switch company" value={selected?.active ? selected.id : ""} onChange={(event) => go(event.target.value)} disabled={pending}>
@@ -134,10 +144,6 @@ export function WorkspaceShell({ actor, companies, manageable, showCombined, not
           <details className="top-menu"><summary className="icon-button" aria-label="Notifications"><Bell size={20} /></summary><div className="menu-panel">
             <strong>Notifications</strong>
             {notices.length ? <ul>{notices.map((notice) => <li key={notice.id}><span>{notice.description}</span><small>{notice.date}</small></li>)}</ul> : <p className="muted">No recent activity.</p>}
-          </div></details>
-          <details className="top-menu"><summary className="profile-summary" aria-label="User profile"><CircleUserRound size={23} /><span>{actor.name}</span><ChevronDown size={14} /></summary><div className="menu-panel">
-            <strong>{actor.name}</strong><p className="muted">{actor.username}</p>
-            <Link href="/password" className="text-link block my-3">Change password</Link><Logout />
           </div></details>
         </div>
       </header>

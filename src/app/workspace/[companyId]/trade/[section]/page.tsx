@@ -14,5 +14,5 @@ export default async function TradeSection({ params, searchParams }: {
   };
   const views = { invoices: TradeRegister, inventory: InventoryView, adjustments: AdjustmentRegister, settings: TradeSettings };
   if (!Object.hasOwn(views, section)) notFound();
-  return <div className="page-stack">{await views[section as keyof typeof views](screen)}</div>;
+  return <div className="page-stack trade-page">{await views[section as keyof typeof views](screen)}</div>;
 }

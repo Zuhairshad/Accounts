@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Download, FilePlus2, Printer } from "lucide-react";
+import { AlertTriangle, Ban, Boxes, Download, FilePlus2, Package, Printer, RotateCcw, Search, Wallet } from "lucide-react";
 import { z } from "zod";
 import { getDb } from "@/db";
 import { first, resolveRange, type Query } from "@/lib/range";
@@ -10,7 +10,7 @@ import { formatMoney } from "@/lib/display";
 import { Exact } from "@/lib/engine/model";
 import type { Permission } from "@/lib/permissions";
 import { FinanceForm } from "@/components/accounting/finance-form";
-import { DateFilters, Money, PageHeading, PanelTable } from "@/components/accounting/finance-ui";
+import { DateFilters, Money, PageHeading } from "@/components/accounting/finance-ui";
 import { Button } from "@/components/ui/button";
 import { lifecycleAction, tradeSettingsAction } from "@/lib/trade/actions";
 import {
@@ -22,10 +22,13 @@ import {
 } from "@/lib/trade/model";
 import { InvoiceEditor, ItemFields } from "./editor";
 import { AdjustmentEditor } from "./adjustment";
+import { Avatar, CardHead, RowMenu, StatusPill, TradeTable, num } from "./ui";
 
 export type TradeScreen = { companyId: string; company: string; base: string; accounting: string; permissions: Permission[]; query: Query };
 const permission = (screen: TradeScreen, value: Permission) => screen.permissions.includes(value);
 export const quantityLabel = (value: string) => new Exact(value).toString();
+const tabNames: Record<TradeType, string> = { sale: "Sales", purchase: "Purchases", sale_return: "Sale returns", purchase_return: "Purchase returns" };
+const sum = (values: string[]) => values.reduce((total, value) => total.plus(value), new Exact(0));
 
 function toolbarLink(url: string, text: string, primary = false) {
   return <Button asChild variant={primary ? "primary" : "outline"}><a href={url}>{primary && <FilePlus2 size={16} />}{text}</a></Button>;
@@ -58,21 +61,32 @@ export async function TradeRegister(screen: TradeScreen) {
         <option value="">Draft and posted</option><option value="draft">Draft</option><option value="posted">Posted</option><option value="void">Voided</option>
       </select></label>
     </DateFilters>
-    <PanelTable title="Trade documents" headers={["Date","Invoice and items","Type","Party","External reference","Voucher","Status","Total (PKR)"]}
+    <TradeTable title="Trade documents" subtitle={`${Number(rows[0]?.count ?? 0)} ${Number(rows[0]?.count ?? 0) === 1 ? "document" : "documents"} · ${displayDate(range.from)} to ${displayDate(range.to)}`}
+      headers={["Party","Invoice and items",num("Total (PKR)"),"Date","Reference and voucher","Status",{ label: "Actions", hidden: true }]}
+      actions={<nav className="tabs trade-tabs" aria-label="Document type">{([undefined, ...tradeTypes] as (TradeType | undefined)[]).map((type) =>
+        <Link key={type ?? "all"} aria-current={(kind.success ? kind.data : undefined) === type ? "page" : undefined} href={`${base}/invoices?${new URLSearchParams({
+          ...(type ? { type } : {}), status: status ?? "", from: range.from, to: range.to, q: search })}`}>{type ? tabNames[type] : "All"}</Link>)}</nav>}
       empty={!rows.length ? "No invoices match your filters" : undefined}>
       {rows.map((row) => {
         const details = lines.filter((line) => line.invoiceId === row.id);
-        return <tr key={row.id}><td>{displayDate(row.date)}</td><td>
-          <Link className="text-link" href={`${base}/invoices/${row.id}`}>{row.number ?? "Open draft"}</Link>
-          {details.length > 0 && <details className="mt-1"><summary className="muted cursor-pointer">{details.length} item {details.length === 1 ? "line" : "lines"}</summary>
-            <ul className="mt-1">{details.map((line) => <li className="text-sm mb-1" key={line.lineNo}>{line.lineType !== "product" && `${lineTypeNames[line.lineType]} · `}{line.item} · {quantityLabel(line.qty)} {line.unit} · {line.amount === null ? "Draft line" : `PKR ${formatMoney(line.amount)}`}</li>)}</ul>
-          </details>}
-        </td><td>{tradeNames[row.type]}</td><td>{row.party}</td><td>{row.externalRef || "—"}</td>
-        <td>{row.voucherDocumentId ? <Link className="text-link" href={`${accounting}/vouchers/${row.voucherDocumentId}`}>{row.voucher}</Link> : "—"}</td>
-        <td><span className={`tag ${row.status === "posted" ? "tag-active" : ""}`}>{row.status}</span></td><Money value={row.total} /></tr>;
+        const open = `${base}/invoices/${row.id}`;
+        return <tr key={row.id}>
+          <td><div className="who"><Avatar name={row.party ?? "—"} /><div><strong>{row.party ?? "—"}</strong><small>{tradeNames[row.type]}</small></div></div></td>
+          <td><Link className="trade-doc-link" href={open}>{row.number ?? "Open draft"}</Link>
+            {details.length > 0 && <details className="trade-lines"><summary>{details.length} item {details.length === 1 ? "line" : "lines"}</summary>
+              <ul>{details.map((line) => <li key={line.lineNo}>{line.lineType !== "product" && `${lineTypeNames[line.lineType]} · `}{line.item} · {quantityLabel(line.qty)} {line.unit} · {line.amount === null ? "Draft line" : `PKR ${formatMoney(line.amount)}`}</li>)}</ul>
+            </details>}</td>
+          <td className="trade-num activity-amount">{formatMoney(row.total)}</td>
+          <td className="whitespace-nowrap">{displayDate(row.date)}</td>
+          <td><span>{row.externalRef || "—"}</span>
+            <small>{row.voucherDocumentId ? <>Voucher: <Link className="text-link" href={`${accounting}/vouchers/${row.voucherDocumentId}`}>{row.voucher}</Link></> : "Not posted"}</small></td>
+          <td><StatusPill status={row.status} /></td>
+          <td><RowMenu label={`Actions for ${row.number ?? "draft"}`} links={[{ label: "Open document", href: open },
+            ...(row.voucherDocumentId ? [{ label: "Open voucher", href: `${accounting}/vouchers/${row.voucherDocumentId}` }] : [])]} /></td>
+        </tr>;
       })}
-    </PanelTable>
-    {(page > 1 || Number(rows[0]?.count ?? 0) > page * 40) && <nav className="finance-toolbar">
+    </TradeTable>
+    {(page > 1 || Number(rows[0]?.count ?? 0) > page * 40) && <nav className="finance-toolbar trade-pager">
       {page > 1 && toolbarLink(pageLink(page - 1), "Previous page")}
       <span>Page {page}</span>{Number(rows[0]?.count ?? 0) > page * 40 && toolbarLink(pageLink(page + 1), "Next page")}
     </nav>}
@@ -87,14 +101,17 @@ async function linkedChoice(screen: TradeScreen, type: TradeType) {
   return <>
     <PageHeading title={`New ${tradeNames[type].toLowerCase()}`} company={company} toolbar={
       permission(screen, "approve") ? toolbarLink(`${base}/invoices/new?type=${type}&historical=1`, "Standalone historical return") : undefined} />
-    <form method="get" className="range-form panel">
+    <form method="get" className="panel trade-search">
       <input type="hidden" name="type" value={type} /><label className="field">Search original invoices<input name="q" defaultValue={search} maxLength={100} /></label>
-      <Button type="submit" variant="outline">Search</Button>
+      <Button type="submit" variant="outline"><Search size={16} aria-hidden /> Search</Button>
     </form>
-    <PanelTable title="Choose the original posted invoice" headers={["Invoice","Date","Party","Total (PKR)","Action"]} empty={!invoices.length ? "No posted invoices match the search" : undefined}>
-      {invoices.map((row) => <tr key={row.id}><td>{row.number}</td><td>{displayDate(row.date)}</td><td>{row.party}</td>
-        <Money value={row.total} /><td>{toolbarLink(`${base}/invoices/new?type=${type}&original=${row.id}`, "Return items")}</td></tr>)}
-    </PanelTable>
+    <TradeTable title="Choose the original posted invoice" subtitle={`Posted ${tradeNames[origin].toLowerCase()}s you can return items against`}
+      headers={["Party","Invoice","Date",num("Total (PKR)"),{ label: "Action", hidden: true }]} empty={!invoices.length ? "No posted invoices match the search" : undefined}>
+      {invoices.map((row) => <tr key={row.id}><td><div className="who"><Avatar name={row.party ?? "—"} /><strong>{row.party}</strong></div></td>
+        <td><strong>{row.number}</strong>{row.externalRef && <small>Ref: {row.externalRef}</small>}</td><td>{displayDate(row.date)}</td>
+        <td className="trade-num activity-amount">{formatMoney(row.total)}</td>
+        <td className="trade-num"><Button asChild variant="outline" className="button-small"><a href={`${base}/invoices/new?type=${type}&original=${row.id}`}>Return items</a></Button></td></tr>)}
+    </TradeTable>
   </>;
 }
 
@@ -152,7 +169,9 @@ export async function TradeEntry(screen: TradeScreen, id?: string) {
 }
 
 function Lifecycle({ screen, kind, id, version, action }: { screen: TradeScreen; kind: "invoice" | "inventory_adjustment"; id: string; version: number; action: "void" | "restore" }) {
-  return <section className="panel print-hide"><details><summary className="cursor-pointer font-semibold">{action === "void" ? "Void document" : "Restore document"}</summary>
+  return <section className={`panel print-hide trade-lifecycle ${action === "void" ? "trade-lifecycle-void" : ""}`}><details>
+    <summary className="cursor-pointer font-semibold">{action === "void" ? <Ban size={16} aria-hidden /> : <RotateCcw size={16} aria-hidden />}{action === "void" ? "Void document" : "Restore document"}</summary>
+    <p className="trade-subtitle mt-2">{action === "void" ? "Voiding reverses the posted entries. The document stays in the history." : "Restoring posts the document again."}</p>
     <FinanceForm action={lifecycleAction} companyId={screen.companyId} id={id} version={version}
       submit={[{ label: action === "void" ? "Confirm void" : "Confirm restore", variant: action === "void" ? "danger" : "outline" }]}>
       <input type="hidden" name="kind" value={kind} /><input type="hidden" name="operation" value={action} />
@@ -162,15 +181,20 @@ function Lifecycle({ screen, kind, id, version, action }: { screen: TradeScreen;
 }
 
 function History({ rows }: { rows: Awaited<ReturnType<typeof tradeHistory>> }) {
-  return <section className="panel print-hide"><h2>Document history</h2>
-    {rows.length ? rows.map((row) => <details className="finance-history" key={row.id}>
+  return <section className="panel print-hide trade-history"><CardHead title="Document history" subtitle={`${rows.length} recorded ${rows.length === 1 ? "change" : "changes"}`} />
+    {rows.length ? <ol className="trade-timeline">{rows.map((row) => <li key={row.id}><details className="finance-history">
       <summary>{row.reason} · {row.actor} · {displayDate(row.date.slice(0,10))}</summary>
       <div className="form-grid mt-3">
         <div><strong>Before</strong><pre className="history-data">{JSON.stringify(row.before, null, 2)}</pre></div>
         <div><strong>After</strong><pre className="history-data">{JSON.stringify(row.after, null, 2)}</pre></div>
       </div>
-    </details>) : <p className="muted mt-2">No recorded changes.</p>}
+    </details></li>)}</ol> : <p className="table-empty trade-empty-inline">No recorded changes.</p>}
   </section>;
+}
+
+/** Definition-list grid used for document facts on detail pages. */
+function Facts({ children }: { children: React.ReactNode }) {
+  return <dl className="trade-facts">{children}</dl>;
 }
 
 export async function TradeDetail(screen: TradeScreen, id: string) {
@@ -188,6 +212,7 @@ export async function TradeDetail(screen: TradeScreen, id: string) {
   const pdf = `/api/trade/${companyId}/${id}`;
   const history = await tradeHistory(db, companyId, id, "invoice");
   const options = lines.length || !payload ? null : await tradeOptions(db, companyId);
+  const sale = isSale(invoice.type);
   return <>
     <PageHeading title={invoice.number ?? `${tradeNames[invoice.type]} draft`} company={company} toolbar={<>
       {toolbarLink(`${base}/invoices?type=${invoice.type}`, "Invoice register")}
@@ -198,50 +223,77 @@ export async function TradeDetail(screen: TradeScreen, id: string) {
       {permission(screen, "print") && <Button asChild variant="outline"><a href={`${pdf}?inline=1`} target="_blank" rel="noreferrer"><Printer size={16} /> Print invoice</a></Button>}
       {permission(screen, "export") && <Button asChild variant="outline"><a href={pdf}><Download size={16} /> Download PDF</a></Button>}
     </>} />
-    <section className="panel"><dl className="finance-detail">
-      <div><dt>Document type</dt><dd>{tradeNames[invoice.type]}</dd></div>
-      <div><dt>Invoice date</dt><dd>{displayDate(invoice.date)}</dd></div>
-      <div><dt>Status</dt><dd className="capitalize">{archived ? "Voided" : invoice.status}</dd></div>
-      <div><dt>{isSale(invoice.type) ? "Customer" : "Supplier"}</dt><dd>{party?.name}</dd></div>
-      {invoice.type === "sale" && <div><dt>Sales executive</dt><dd>{executive?.name ?? "—"}</dd></div>}
-      <div><dt>Accounting voucher</dt><dd>{voucher ? <Link className="text-link" href={`${accounting}/vouchers/${voucher.id}`}>{voucher.number}</Link> : "Unposted"}</dd></div>
-      <div><dt>External reference</dt><dd>{invoice.externalRef || "—"}</dd></div>
-      <div><dt>Purchase order</dt><dd>{invoice.poRef || "—"}</dd></div>
-      <div><dt>Due date</dt><dd>{invoice.dueOn ? displayDate(invoice.dueOn) : "—"}</dd></div>
-      {original && <div><dt>Original invoice</dt><dd><Link className="text-link" href={`${base}/invoices/${original.id}`}>{original.number}</Link></dd></div>}
-      {exchange && <div><dt>Exchange return</dt><dd><Link className="text-link" href={`${base}/invoices/${exchange.id}`}>{exchange.number}</Link></dd></div>}
-      {payload?.reason && <div><dt>Return reason</dt><dd>{payload.reason}</dd></div>}
-      {invoice.duplicateReason && <div><dt>External reference exception</dt><dd>{invoice.duplicateReason}</dd></div>}
-      {payload?.narration && <div><dt>Narration</dt><dd>{payload.narration}</dd></div>}
-      {payload?.notes && <div><dt>Notes</dt><dd>{payload.notes}</dd></div>}
-    </dl></section>
-    <PanelTable title="Item details" headers={["Line type","Item","Description","Quantity","Unit","Rate (PKR)","Discount","Tax","Line total","Disposition"]}>
-      {lines.length ? lines.map((line) => <tr key={line.lineNo}><td>{lineTypeNames[line.lineType]}</td>
-        <td><Link className="text-link" href={`${base}/inventory/${line.itemId}`}>{line.item}</Link></td><td>{line.description}</td>
-        <td>{quantityLabel(line.qty)}</td><td>{line.unit}</td><td>{quantityLabel(line.rate)}</td>
-        <Money value={line.discount} /><Money value={line.tax} /><Money value={line.amount} />
-        <td>{invoice.type === "sale_return" ? line.disposition : "—"}</td>
-      </tr>) : payload?.lines.map((line, index) => {
-        const item = options?.goods.find((option) => option.id === line.itemId);
-        return <tr key={index}><td>{lineTypeNames[line.lineType ?? "product"]}</td><td>{item?.name}</td><td>{line.description}</td><td>{line.quantity}</td><td>{item?.unit}</td><td>{line.rate}</td>
-          <td>{line.discount}</td><td>{line.tax}</td><td>Unposted</td><td>{line.disposition}</td></tr>;
-      })}
-    </PanelTable>
-    {posted || archived && invoice.voucherId ? <section className="panel"><dl className="finance-detail">
-      <div><dt>Grand total (PKR)</dt><dd>{formatMoney(invoice.total)}</dd></div>
-      {calc && <>
-        <div><dt>Tax</dt><dd>{formatMoney(calc.tax)}</dd></div><div><dt>Withholding</dt><dd>{formatMoney(calc.withholding)}</dd></div>
-        <div><dt>{isReturn(invoice.type) ? "Refund" : "Paid on invoice"}</dt><dd>{formatMoney(calc.settled)}</dd></div>
-        <div><dt>{isReturn(invoice.type) ? "Party credit or debit adjustment" : "Initial amount on credit"}</dt><dd>{formatMoney(calc.partyAmount)}</dd></div>
-        {original && <div><dt>Applied to original</dt><dd>{formatMoney(calc.appliedCredit)}</dd></div>}
-      </>}
-    </dl></section> : null}
-    {payments.length > 0 && <PanelTable title={isReturn(invoice.type) ? "Refund details" : "Payment details"} headers={["Account","Amount (PKR)"]}>
-      {payments.map((payment, index) => <tr key={index}><td>{payment.name}</td><Money value={payment.amount} /></tr>)}
-    </PanelTable>}
-    {writable && (archived ? permission(screen, "restore") && (!invoice.voucherId || post) : permission(screen, "delete")) &&
-      <Lifecycle screen={screen} kind="invoice" id={id} version={invoice.version} action={archived ? "restore" : "void"} />}
-    <History rows={history} />
+    <section className="panel trade-doc">
+      <div className="trade-doc-head">
+        <div className="who"><Avatar name={party?.name ?? "—"} />
+          <div><small className="trade-doc-kicker">{tradeNames[invoice.type]}</small><strong className="trade-doc-party">{party?.name ?? "—"}</strong></div></div>
+        <div className="trade-doc-total">
+          <StatusPill status={invoice.status} label={archived ? "Voided" : invoice.status} />
+          <span className="trade-doc-amount figure"><small>PKR</small> {formatMoney(invoice.total)}</span>
+          <small className="muted">{posted || archived ? "Document total" : "Draft total"}</small>
+        </div>
+      </div>
+      <Facts>
+        <div><dt>Document type</dt><dd>{tradeNames[invoice.type]}</dd></div>
+        <div><dt>Invoice date</dt><dd>{displayDate(invoice.date)}</dd></div>
+        <div><dt>Status</dt><dd className="capitalize">{archived ? "Voided" : invoice.status}</dd></div>
+        <div><dt>{sale ? "Customer" : "Supplier"}</dt><dd>{party?.name}</dd></div>
+        {invoice.type === "sale" && <div><dt>Sales executive</dt><dd>{executive?.name ?? "—"}</dd></div>}
+        <div><dt>Accounting voucher</dt><dd>{voucher ? <Link className="text-link" href={`${accounting}/vouchers/${voucher.id}`}>{voucher.number}</Link> : "Unposted"}</dd></div>
+        <div><dt>External reference</dt><dd>{invoice.externalRef || "—"}</dd></div>
+        <div><dt>Purchase order</dt><dd>{invoice.poRef || "—"}</dd></div>
+        <div><dt>Due date</dt><dd>{invoice.dueOn ? displayDate(invoice.dueOn) : "—"}</dd></div>
+        {original && <div><dt>Original invoice</dt><dd><Link className="text-link" href={`${base}/invoices/${original.id}`}>{original.number}</Link></dd></div>}
+        {exchange && <div><dt>Exchange return</dt><dd><Link className="text-link" href={`${base}/invoices/${exchange.id}`}>{exchange.number}</Link></dd></div>}
+        {payload?.reason && <div className="trade-fact-wide"><dt>Return reason</dt><dd>{payload.reason}</dd></div>}
+        {invoice.duplicateReason && <div className="trade-fact-wide"><dt>External reference exception</dt><dd>{invoice.duplicateReason}</dd></div>}
+        {payload?.narration && <div className="trade-fact-wide"><dt>Narration</dt><dd>{payload.narration}</dd></div>}
+        {payload?.notes && <div className="trade-fact-wide"><dt>Notes</dt><dd>{payload.notes}</dd></div>}
+      </Facts>
+      <div className="trade-doc-lines">
+        <h2>Item details</h2>
+        <div className="table-scroll"><table className="activity-table trade-table trade-lines-table"><thead><tr>
+          {["Line type","Item","Description"].map((label) => <th key={label} scope="col">{label}</th>)}
+          {["Quantity","Unit","Rate (PKR)","Discount","Tax","Line total"].map((label) => <th key={label} scope="col" className={label === "Unit" ? undefined : "trade-num"}>{label}</th>)}
+          <th scope="col">Disposition</th></tr></thead>
+        <tbody>{lines.length ? lines.map((line) => <tr key={line.lineNo}><td>{lineTypeNames[line.lineType]}</td>
+          <td><Link className="text-link" href={`${base}/inventory/${line.itemId}`}>{line.item}</Link></td><td className="trade-desc">{line.description}</td>
+          <td className="trade-num">{quantityLabel(line.qty)}</td><td>{line.unit}</td><td className="trade-num">{quantityLabel(line.rate)}</td>
+          <Money value={line.discount} /><Money value={line.tax} /><td className="money-cell activity-amount">{formatMoney(line.amount)}</td>
+          <td className="capitalize">{invoice.type === "sale_return" ? line.disposition : "—"}</td>
+        </tr>) : payload?.lines.map((line, index) => {
+          const item = options?.goods.find((option) => option.id === line.itemId);
+          return <tr key={index}><td>{lineTypeNames[line.lineType ?? "product"]}</td><td>{item?.name}</td><td className="trade-desc">{line.description}</td>
+            <td className="trade-num">{line.quantity}</td><td>{item?.unit}</td><td className="trade-num">{line.rate}</td>
+            <td className="trade-num">{line.discount}</td><td className="trade-num">{line.tax}</td><td className="trade-num muted">Unposted</td><td className="capitalize">{line.disposition}</td></tr>;
+        })}</tbody></table></div>
+      </div>
+      {posted || archived && invoice.voucherId ? <div className="trade-doc-foot">
+        <p className="trade-subtitle">{lines.length} item {lines.length === 1 ? "line" : "lines"}{payments.length ? ` · ${payments.length} ${isReturn(invoice.type) ? "refund" : "payment"} ${payments.length === 1 ? "entry" : "entries"}` : ""}</p>
+        <dl className="trade-totals">
+          {lines.length > 0 && <>
+            <div><dt>Subtotal</dt><dd>{formatMoney(sum(lines.map((line) => line.subtotal)).toFixed(2))}</dd></div>
+            <div><dt>Discount</dt><dd>{formatMoney(sum(lines.map((line) => line.discount)).toFixed(2))}</dd></div>
+          </>}
+          {calc && <div><dt>Tax</dt><dd>{formatMoney(calc.tax)}</dd></div>}
+          <div className="trade-total-grand"><dt>Grand total (PKR)</dt><dd>{formatMoney(invoice.total)}</dd></div>
+          {calc && <>
+            <div><dt>Withholding</dt><dd>{formatMoney(calc.withholding)}</dd></div>
+            <div><dt>{isReturn(invoice.type) ? "Refund" : "Paid on invoice"}</dt><dd>{formatMoney(calc.settled)}</dd></div>
+            <div className="trade-total-due"><dt>{isReturn(invoice.type) ? "Party credit or debit adjustment" : "Initial amount on credit"}</dt><dd>{formatMoney(calc.partyAmount)}</dd></div>
+            {original && <div><dt>Applied to original</dt><dd>{formatMoney(calc.appliedCredit)}</dd></div>}
+          </>}
+        </dl>
+      </div> : null}
+    </section>
+    {payments.length > 0 && <TradeTable title={isReturn(invoice.type) ? "Refund details" : "Payment details"} className="trade-compact" headers={["Account",num("Amount (PKR)")]}>
+      {payments.map((payment, index) => <tr key={index}><td><strong>{payment.name}</strong></td><td className="money-cell activity-amount">{formatMoney(payment.amount)}</td></tr>)}
+    </TradeTable>}
+    <div className="trade-aside-grid">
+      <History rows={history} />
+      {writable && (archived ? permission(screen, "restore") && (!invoice.voucherId || post) : permission(screen, "delete")) &&
+        <Lifecycle screen={screen} kind="invoice" id={id} version={invoice.version} action={archived ? "restore" : "void"} />}
+    </div>
   </>;
 }
 
@@ -251,20 +303,41 @@ export async function InventoryView(screen: TradeScreen) {
   const rows = await inventorySummary(getDb(), companyId, asOf);
   const q = (first(query.q) ?? "").trim().toLowerCase().slice(0,100);
   const visible = rows.filter((row) => !q || `${row.name} ${row.sku} ${row.category}`.toLowerCase().includes(q));
+  const stock = visible.filter((row) => row.kind === "stock");
+  const below = stock.filter((row) => row.active && new Exact(row.qty).lt(row.reorder));
   return <>
     <PageHeading title="Inventory items" company={company} toolbar={<>{toolbarLink(`${base}/adjustments`, "Inventory adjustments")}
       {permission(screen, "create") && toolbarLink(`${base}/inventory/new`, "Add item", true)}</>} />
-    <form className="range-form panel" method="get"><label className="field">Search items<input name="q" defaultValue={q} maxLength={100} /></label>
-      <Button type="submit" variant="outline">Search</Button></form>
-    <PanelTable title={`Available stock on ${displayDate(asOf)}`} headers={["Item","SKU","Category","Unit","Opening","Purchased","Sold","Sale returns","Purchase returns","Adjustments","On hand","Average cost","Stock value","Status"]}
+    <section className="stat-row trade-stats" aria-label="Inventory summary">
+      <article className="stat-card"><header><span className="stat-icon tone-green"><Package size={20} aria-hidden /></span>
+        <div><h2>Items listed</h2><p>{q ? "Matching your search" : "Products and services"}</p></div></header>
+        <div className="stat-body"><p className="stat-value">{visible.length}</p>
+          <div className="stat-change"><span className="pill">{stock.length} stock · {visible.length - stock.length} service</span></div></div></article>
+      <article className="stat-card"><header><span className="stat-icon tone-blue"><Wallet size={20} aria-hidden /></span>
+        <div><h2>Stock value</h2><p>At moving-average cost on {displayDate(asOf)}</p></div></header>
+        <div className="stat-body"><p className="stat-value figure"><small>PKR</small> {formatMoney(sum(stock.map((row) => row.value)).toFixed(2))}</p></div></article>
+      <article className="stat-card"><header><span className="stat-icon tone-red"><AlertTriangle size={20} aria-hidden /></span>
+        <div><h2>Below reorder level</h2><p>Active stock items to replenish</p></div></header>
+        <div className="stat-body"><p className="stat-value">{below.length}</p>
+          <div className="stat-change"><span className={`pill ${below.length ? "pill-bad" : "pill-good"}`}>{below.length ? "Needs attention" : "All stocked"}</span></div></div></article>
+    </section>
+    <form className="panel trade-search" method="get"><label className="field">Search items<input name="q" defaultValue={q} maxLength={100} /></label>
+      <Button type="submit" variant="outline"><Search size={16} aria-hidden /> Search</Button></form>
+    <TradeTable title={`Available stock on ${displayDate(asOf)}`} subtitle="Quantities include opening stock, trade documents and posted adjustments." className="trade-dense"
+      headers={["Item","Unit",...["Opening","Purchased","Sold","Sale returns","Purchase returns","Adjustments","On hand","Average cost","Stock value"].map(num),"Status"]}
       empty={!visible.length ? "No inventory items match your search" : undefined}>
-      {visible.map((row) => <tr key={row.id}><td><Link className="text-link" href={`${base}/inventory/${row.id}`}>{row.name}</Link>
-        {row.kind === "service" && <span className="tag ml-2">Service</span>}</td><td>{row.sku}</td><td>{row.category || "—"}</td><td>{row.unit}</td>
-        {[row.opening,row.purchases,row.sales,row.saleReturns,row.purchaseReturns,row.adjusted,row.qty].map((quantity, index) =>
-          <td key={index} className="money-cell">{row.kind === "service" ? "—" : quantityLabel(quantity)}</td>)}
-        <td className="money-cell">{quantityLabel(row.average)}</td><Money value={row.value} />
-        <td>{row.active ? row.kind === "stock" && new Exact(row.qty).lt(row.reorder) ? "Below reorder" : "Active" : "Inactive"}</td></tr>)}
-    </PanelTable>
+      {visible.map((row) => {
+        const low = row.active && row.kind === "stock" && new Exact(row.qty).lt(row.reorder);
+        return <tr key={row.id}><td><div className="who"><span className={`trade-item-icon ${row.kind === "service" ? "is-service" : ""}`} aria-hidden>
+          {row.kind === "service" ? <Boxes size={16} /> : <Package size={16} />}</span><div>
+          <Link className="trade-doc-link" href={`${base}/inventory/${row.id}`}>{row.name}</Link>
+          <small>{row.sku}{row.category ? ` · ${row.category}` : ""}{row.kind === "service" && <span className="tag ml-2">Service</span>}</small></div></div></td><td>{row.unit}</td>
+          {[row.opening,row.purchases,row.sales,row.saleReturns,row.purchaseReturns,row.adjusted,row.qty].map((quantity, index) =>
+            <td key={index} className={`money-cell ${index === 6 ? "activity-amount" : ""}`}>{row.kind === "service" ? "—" : quantityLabel(quantity)}</td>)}
+          <td className="money-cell">{quantityLabel(row.average)}</td><td className="money-cell activity-amount">{formatMoney(row.value)}</td>
+          <td>{row.active ? low ? <StatusPill status="below reorder" label="Below reorder" /> : <StatusPill status="active" label="Active" /> : <StatusPill status="inactive" label="Inactive" />}</td></tr>;
+      })}
+    </TradeTable>
   </>;
 }
 
@@ -285,29 +358,37 @@ export async function ItemView(screen: TradeScreen, id?: string) {
       {toolbarLink(`${base}/inventory`, "Inventory")}
       {item?.kind === "stock" && permission(screen, "post") && permission(screen, "create") && toolbarLink(`${base}/adjustments/new?item=${item.id}`, "Adjust stock")}
     </>} />
-    {canEdit && options ? <section className="panel"><h2>Item details</h2><ItemFields companyId={companyId} base={base} options={options}
+    {summary && item?.kind === "stock" && <section className="trade-stock" aria-labelledby="stock-title">
+      <CardHead title={`Stock on ${displayDate(range.to)}`} subtitle={`${item.sku ? `${item.sku} · ` : ""}${existing?.unit}${item.category ? ` · ${item.category}` : ""}`}>
+        {item.active ? new Exact(summary.qty).lt(item.reorder) ? <StatusPill status="below reorder" label="Below reorder" /> : <StatusPill status="active" label="Active" /> : <StatusPill status="inactive" label="Inactive" />}
+      </CardHead>
+      <dl className="trade-kpis">
+        <div className="trade-kpi trade-kpi-main"><dt>Available quantity</dt><dd>{quantityLabel(summary.qty)} {summary.unit}</dd></div>
+        <div className="trade-kpi"><dt>Moving-average cost</dt><dd>{quantityLabel(summary.average)} PKR</dd></div>
+        <div className="trade-kpi trade-kpi-main"><dt>Inventory value</dt><dd>{formatMoney(summary.value)} PKR</dd></div>
+        <div className="trade-kpi"><dt>Opening date</dt><dd>{summary.openingDate ? displayDate(summary.openingDate) : "—"}</dd></div>
+        <div className="trade-kpi"><dt>Opening quantity</dt><dd>{quantityLabel(summary.opening)}</dd></div>
+        <div className="trade-kpi"><dt>Effective opening rate</dt><dd>{new Exact(summary.opening).isZero() ? "—" :
+          new Exact(summary.openingValue).div(summary.opening).toFixed(10).replace(/\.?0+$/, "")}</dd></div>
+      </dl>
+    </section>}
+    {canEdit && options ? <section className="panel trade-form-card"><CardHead title="Item details" subtitle={item ? "Code, unit and reorder settings for this item." : "Create a stock product or a service."} />
+      <ItemFields companyId={companyId} base={base} options={options}
       item={existing ? { ...existing.item, unit: existing.unit } : undefined} canPost={permission(screen, "post")} today={today} /></section> :
-      item && <section className="panel"><dl className="finance-detail"><div><dt>SKU</dt><dd>{item.sku || "—"}</dd></div>
+      item && <section className="panel trade-form-card"><CardHead title="Item details" /><Facts><div><dt>SKU</dt><dd>{item.sku || "—"}</dd></div>
         <div><dt>Unit</dt><dd>{existing?.unit}</dd></div><div><dt>Category</dt><dd>{item.category || "—"}</dd></div>
         <div><dt>Reorder level</dt><dd>{quantityLabel(item.reorder)}</dd></div><div><dt>Status</dt><dd>{item.active ? "Active" : "Inactive"}</dd></div>
-        <div><dt>Description</dt><dd>{item.description || "—"}</dd></div></dl></section>}
+        <div className="trade-fact-wide"><dt>Description</dt><dd>{item.description || "—"}</dd></div></Facts></section>}
     {summary && item?.kind === "stock" && <>
-      <section className="panel"><h2>Stock on {displayDate(range.to)}</h2><dl className="finance-detail mt-3">
-        <div><dt>Available quantity</dt><dd>{quantityLabel(summary.qty)} {summary.unit}</dd></div>
-        <div><dt>Moving-average cost</dt><dd>{quantityLabel(summary.average)} PKR</dd></div>
-        <div><dt>Inventory value</dt><dd>{formatMoney(summary.value)} PKR</dd></div>
-        <div><dt>Opening date</dt><dd>{summary.openingDate ? displayDate(summary.openingDate) : "—"}</dd></div>
-        <div><dt>Opening quantity</dt><dd>{quantityLabel(summary.opening)}</dd></div>
-        <div><dt>Effective opening rate</dt><dd>{new Exact(summary.opening).isZero() ? "—" :
-          new Exact(summary.openingValue).div(summary.opening).toFixed(10).replace(/\.?0+$/, "")}</dd></div>
-      </dl></section>
       <DateFilters query={query} dateLabel="Stock ledger dates" />
-      <PanelTable title="Stock ledger" headers={["Date","Voucher","Movement","Change in quantity","Unit cost","Value change","Running quantity","Running value","Average"]}
+      <TradeTable title="Stock ledger" className="trade-dense" subtitle={`${displayDate(range.from)} to ${displayDate(range.to)}`}
+        headers={["Date","Voucher","Movement",...["Change in quantity","Unit cost","Value change","Running quantity","Running value","Average"].map(num)]}
         empty={!ledger.length ? "No posted movements in this period" : undefined}>
-        {ledger.map((row) => <tr key={row.id}><td>{displayDate(row.date)}</td><td><Link className="text-link" href={`${accounting}/vouchers/${row.documentId}`}>{row.voucher}</Link></td>
-          <td className="capitalize">{row.kind.replaceAll("_"," ")}</td><td>{quantityLabel(row.qty)}</td><td>{quantityLabel(row.unitCost)}</td>
-          <Money value={row.value} /><td>{quantityLabel(row.qtyAfter)}</td><Money value={row.valueAfter} /><td>{quantityLabel(row.average)}</td></tr>)}
-      </PanelTable>
+        {ledger.map((row) => <tr key={row.id}><td className="whitespace-nowrap">{displayDate(row.date)}</td><td><Link className="text-link" href={`${accounting}/vouchers/${row.documentId}`}>{row.voucher}</Link></td>
+          <td><span className={`trade-move ${new Exact(row.qty).lt(0) ? "is-out" : "is-in"}`}>{row.kind.replaceAll("_"," ")}</span></td>
+          <td className={`money-cell ${new Exact(row.qty).lt(0) ? "trade-negative" : ""}`}>{quantityLabel(row.qty)}</td><td className="money-cell">{quantityLabel(row.unitCost)}</td>
+          <Money value={row.value} /><td className="money-cell">{quantityLabel(row.qtyAfter)}</td><td className="money-cell activity-amount">{formatMoney(row.valueAfter)}</td><td className="money-cell">{quantityLabel(row.average)}</td></tr>)}
+      </TradeTable>
     </>}
   </>;
 }
@@ -318,10 +399,10 @@ export async function TradeSettings(screen: TradeScreen) {
   const { settings } = await tradeOptions(getDb(), companyId);
   return <>
     <PageHeading title="Invoice settings" company={company} />
-    <section className="panel"><h2>Tax and withholding entry</h2>
-      <p className="muted mt-2">Enable these fields only for businesses that use them. Enter reviewed amounts on each document.</p>
+    <section className="panel trade-form-card trade-narrow"><CardHead title="Tax and withholding entry"
+      subtitle="Enable these fields only for businesses that use them. Enter reviewed amounts on each document." />
       <FinanceForm action={tradeSettingsAction} companyId={companyId} submit={[{ label: "Save invoice settings" }]}>
-        <div className="form-grid mt-4">
+        <div className="form-grid trade-form-grid mt-4">
           <label className="field">Tax entry<select name="tradeTax" defaultValue={String(settings.tradeTax)}><option value="false">Disabled</option><option value="true">Enabled</option></select></label>
           <label className="field">Withholding entry<select name="tradeWithholding" defaultValue={String(settings.tradeWithholding)}><option value="false">Disabled</option><option value="true">Enabled</option></select></label>
         </div>
@@ -343,7 +424,8 @@ export async function AdjustmentView(screen: TradeScreen, id?: string) {
     return <>
       <PageHeading title={editing ? "Edit inventory adjustment" : "New inventory adjustment"} company={company}
         toolbar={toolbarLink(id ? `${base}/adjustments/${id}` : `${base}/adjustments`, "Cancel")} />
-      <section className="panel"><AdjustmentEditor companyId={companyId} base={base} today={today} canApprove={permission(screen, "approve")}
+      <section className="panel trade-form-card"><CardHead title="Adjustment details" subtitle="Choose the item and adjustment type, then record the quantity and reason." />
+        <AdjustmentEditor companyId={companyId} base={base} today={today} canApprove={permission(screen, "approve")}
         id={id} version={existing?.source.version ?? 0} input={existing?.source.payload as import("@/lib/trade/model").AdjustmentInput | undefined}
         options={options.filter((row) => row.kind === "stock" && row.active)} defaultItem={first(query.item)} /></section>
     </>;
@@ -356,13 +438,22 @@ export async function AdjustmentView(screen: TradeScreen, id?: string) {
       {toolbarLink(`${base}/adjustments`, "Adjustment register")}
       {!archive && source.payload && permission(screen, "edit") && permission(screen, "post") && toolbarLink(`${base}/adjustments/${id}?edit=1`, "Edit adjustment")}
     </>} />
-    <section className="panel"><dl className="finance-detail">
+    <section className="panel trade-doc">
+      <div className="trade-doc-head">
+        <div className="who"><span className="trade-item-icon" aria-hidden><Package size={16} /></span>
+          <div><small className="trade-doc-kicker">{adjustmentNames[source.kind as keyof typeof adjustmentNames] ?? "Inventory adjustment"}</small><strong className="trade-doc-party">{item?.item.name ?? "—"}</strong></div></div>
+        <div className="trade-doc-total">
+          <StatusPill status={source.status} label={archive ? "Voided" : source.status} />
+          {calc && <span className="trade-doc-amount figure"><small>PKR</small> {formatMoney(calc.value)}</span>}
+          {calc && <small className="muted">Value adjustment</small>}
+        </div>
+      </div>
+      <Facts>
       <div><dt>Type</dt><dd>{adjustmentNames[source.kind as keyof typeof adjustmentNames] ?? "Inventory adjustment"}</dd></div>
       <div><dt>Date</dt><dd>{source.date && displayDate(source.date)}</dd></div>
       <div><dt>Item</dt><dd>{item?.item.name}</dd></div><div><dt>Status</dt><dd className="capitalize">{archive ? "Voided" : source.status}</dd></div>
       <div><dt>Voucher</dt><dd>{voucher && <Link className="text-link" href={`${accounting}/vouchers/${voucher.id}`}>{voucher.number}</Link>}</dd></div>
       <div><dt>Entered by</dt><dd>{actor?.name ?? "—"}</dd></div>
-      <div><dt>Reason</dt><dd>{source.reason}</dd></div>
       <div><dt>Supporting reference</dt><dd>{(source.payload as import("@/lib/trade/model").AdjustmentInput | null)?.reference || "—"}</dd></div>
       {calc && <>
         <div><dt>System quantity</dt><dd>{quantityLabel(calc.previous)}</dd></div>
@@ -371,10 +462,14 @@ export async function AdjustmentView(screen: TradeScreen, id?: string) {
         <div><dt>Cost per unit (PKR)</dt><dd>{quantityLabel(calc.unitCost)}</dd></div>
         <div><dt>Value adjustment (PKR)</dt><dd>{formatMoney(calc.value)}</dd></div>
       </>}
-    </dl></section>
-    {!!source.payload && (archive ? permission(screen, "restore") && permission(screen, "post") : permission(screen, "delete")) &&
-      <Lifecycle screen={screen} kind="inventory_adjustment" id={source.id} version={source.version} action={archive ? "restore" : "void"} />}
-    <History rows={await tradeHistory(db, companyId, source.id, "inventory_adjustment")} />
+      <div className="trade-fact-wide"><dt>Reason</dt><dd>{source.reason}</dd></div>
+      </Facts>
+    </section>
+    <div className="trade-aside-grid">
+      <History rows={await tradeHistory(db, companyId, source.id, "inventory_adjustment")} />
+      {!!source.payload && (archive ? permission(screen, "restore") && permission(screen, "post") : permission(screen, "delete")) &&
+        <Lifecycle screen={screen} kind="inventory_adjustment" id={source.id} version={source.version} action={archive ? "restore" : "void"} />}
+    </div>
   </>;
 }
 
@@ -406,13 +501,18 @@ export async function AdjustmentRegister(screen: TradeScreen) {
     <DateFilters query={query} withSearch>
       <label className="field">Status<select name="status" defaultValue={status}><option value="">Active</option><option value="void">Voided</option></select></label>
     </DateFilters>
-    <PanelTable title="Adjustment register" headers={["Date","Adjustment","Item","Type","Status","Qty difference","Value (PKR)","Voucher","Entered by","Reason"]}
+    <TradeTable title="Adjustment register" className="trade-dense" subtitle={`${rows.length} ${rows.length === 1 ? "adjustment" : "adjustments"} · ${displayDate(range.from)} to ${displayDate(range.to)}`}
+      headers={["Adjustment","Item and voucher","Date",num("Qty difference"),num("Value (PKR)"),"Entered by","Reason","Status"]}
       empty={!rows.length ? "No adjustments match your filters" : undefined}>
-      {rows.map((row) => <tr key={row.id}><td>{row.date ? displayDate(row.date) : "—"}</td><td><Link className="text-link" href={`${base}/adjustments/${row.id}`}>{row.number ?? "View adjustment"}</Link></td>
-        <td>{row.item ?? "—"}</td><td>{row.kind ? adjustmentNames[row.kind as keyof typeof adjustmentNames] : "—"}</td><td>{row.status}</td>
-        <td>{row.difference ? quantityLabel(row.difference) : "—"}</td>{row.value ? <Money value={row.value} /> : <td>—</td>}
-        <td>{row.voucherId && <Link className="text-link" href={`${accounting}/vouchers/${row.voucherId}`}>{row.voucher}</Link>}</td>
-        <td>{row.actor}</td><td>{row.reason}</td></tr>)}
-    </PanelTable>
+      {rows.map((row) => <tr key={row.id}>
+        <td><Link className="trade-doc-link" href={`${base}/adjustments/${row.id}`}>{row.number ?? "View adjustment"}</Link>
+          <small>{row.kind ? adjustmentNames[row.kind as keyof typeof adjustmentNames] : "—"}</small></td>
+        <td><strong>{row.item ?? "—"}</strong>
+          <small>{row.voucherId ? <>Voucher: <Link className="text-link" href={`${accounting}/vouchers/${row.voucherId}`}>{row.voucher}</Link></> : "Not posted"}</small></td><td className="whitespace-nowrap">{row.date ? displayDate(row.date) : "—"}</td>
+        <td className={`money-cell ${row.difference && new Exact(row.difference).lt(0) ? "trade-negative" : ""}`}>{row.difference ? quantityLabel(row.difference) : "—"}</td>
+        {row.value ? <td className="money-cell activity-amount">{formatMoney(row.value)}</td> : <td className="money-cell">—</td>}
+        <td><div className="who"><Avatar name={row.actor ?? "—"} /><span className="whitespace-nowrap">{row.actor}</span></div></td>
+        <td className="activity-narration"><span title={row.reason}>{row.reason}</span></td><td><StatusPill status={row.status} /></td></tr>)}
+    </TradeTable>
   </>;
 }

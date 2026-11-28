@@ -18,5 +18,5 @@ export default async function TradeRecord({ params, searchParams }: {
   else if (section === "inventory") view = await ItemView(screen, id === "new" ? undefined : id);
   else if (section === "adjustments") view = await AdjustmentView(screen, id === "new" ? undefined : id);
   else notFound();
-  return <div className="page-stack">{view}</div>;
+  return <div className="page-stack trade-page">{view}</div>;
 }

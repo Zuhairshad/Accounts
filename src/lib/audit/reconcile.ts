@@ -134,7 +134,7 @@ export async function reconcile(db: Reader, companyId: string, range: { from: st
     SELECT inv.id,inv.number,inv.type,inv.total::text,
       coalesce(sum(l.debit-l.credit) FILTER (WHERE a.control IN ('receivable','payable','withholding_receivable','withholding_payable')
         OR EXISTS(SELECT 1 FROM paid WHERE paid.id=inv.id AND paid.account_id=l.account_id)),0)::text AS settlement,
-      coalesce(sum(l.credit-l.debit) FILTER (WHERE a.control IN ('sales','sales_returns','output_tax')),0)::text AS revenue,
+      coalesce(sum(l.credit-l.debit) FILTER (WHERE a.control IN ('sales','sales_returns','service_income','freight_income','output_tax')),0)::text AS revenue,
       coalesce(sum(l.debit-l.credit) FILTER (WHERE a.control='cogs'),0)::text AS cogs,
       (SELECT coalesce(sum(x.inventory_cost),0) FROM invoice_lines x JOIN inventory_items g ON g.company_id=x.company_id AND g.id=x.item_id
         WHERE x.company_id=inv.company_id AND x.invoice_id=inv.id AND x.posting_voucher_id=inv.voucher_id AND g.kind='stock')::text AS cost,
@@ -154,7 +154,7 @@ export async function reconcile(db: Reader, companyId: string, range: { from: st
     if (row.type === "sale" || row.type === "sale_return") {
       const revenue = d(row.revenue).times(row.type === "sale" ? 1 : -1);
       if (!revenue.eq(row.total)) totalIssues.push({ label: `${row.number} (${row.type.replace("_", " ")})`, href: invoiceHref(row.id),
-        amount: money(revenue.minus(row.total)), note: `Invoice total ${money(row.total)}, sales/returns and output tax lines ${money(revenue)}` });
+        amount: money(revenue.minus(row.total)), note: `Invoice total ${money(row.total)}, sales/returns, service, freight and output tax lines ${money(revenue)}` });
       if (!row.payload) { unverifiable++; continue; }
       const expectedCogs = d(row.cost).times(row.type === "sale" ? 1 : -1);
       if (!d(row.cogs).eq(expectedCogs)) cogsIssues.push({ label: row.number, href: invoiceHref(row.id), amount: money(d(row.cogs).minus(expectedCogs)),
@@ -272,7 +272,7 @@ export async function reconcile(db: Reader, companyId: string, range: { from: st
       href: `${base}/reports/mis?from=${from}&to=${to}`,
     }], `Total period debits plus credits for ${from} to ${to}.`));
 
-  /* 8. Net sales in the trade registers agree with Sales less Sales Returns in the ledger. */
+  /* 8. Net sales in the trade registers agree with Sales, Service and Freight Income less Sales Returns in the ledger. */
   const [sales] = (await db.execute<{ register: string; ledger: string }>(sql`
     SELECT
       (SELECT coalesce(sum(CASE WHEN i.type='sale' THEN 1 ELSE -1 END*(i.total-coalesce((i.calculation->>'tax')::numeric,0))),0)
@@ -282,18 +282,18 @@ export async function reconcile(db: Reader, companyId: string, range: { from: st
       (SELECT coalesce(sum(l.credit-l.debit),0) FROM effective_vouchers e
         JOIN journal_lines l ON l.company_id=e.company_id AND l.voucher_id=e.id
         JOIN accounts a ON a.company_id=l.company_id AND a.id=l.account_id
-        WHERE e.company_id=${companyId} AND a.control IN ('sales','sales_returns')
+        WHERE e.company_id=${companyId} AND a.control IN ('sales','sales_returns','service_income','freight_income')
           AND e.accounting_date BETWEEN ${from}::date AND ${to}::date)::text AS ledger`)).rows;
   const salesManual = (await db.execute<{ documentId: string; number: string; amount: string }>(sql`
     SELECT e.document_id AS "documentId",e.number,sum(l.credit-l.debit)::text AS amount FROM effective_vouchers e
     JOIN journal_lines l ON l.company_id=e.company_id AND l.voucher_id=e.id
-    JOIN accounts a ON a.company_id=l.company_id AND a.id=l.account_id AND a.control IN ('sales','sales_returns')
+    JOIN accounts a ON a.company_id=l.company_id AND a.id=l.account_id AND a.control IN ('sales','sales_returns','service_income','freight_income')
     WHERE e.company_id=${companyId} AND e.accounting_date BETWEEN ${from}::date AND ${to}::date
       AND NOT EXISTS(SELECT 1 FROM invoices i WHERE i.company_id=e.company_id AND i.voucher_id=e.id)
     GROUP BY e.document_id,e.number ORDER BY e.number`)).rows;
   checks.push(compare("net-sales", "Net sales agree with sales and return invoices", "trade", d(sales.register), d(sales.ledger),
     salesManual.map((row) => ({ label: row.number, href: voucherHref(row.documentId), amount: money(row.amount), note: "Sales posting not created by an invoice" })),
-    `Expected is invoice net sales (sales minus returns, before tax) for ${from} to ${to}; actual is the Sales less Sales Returns ledger movement.`));
+    `Expected is invoice net sales (sales minus returns, before tax) for ${from} to ${to}; actual is the Sales, Service Income and Freight Income less Sales Returns ledger movement.`));
 
   /* 9. Payment allocations point at effective payments and posted invoices and never exceed the invoice. */
   const allocationIssues = (await db.execute<{ invoiceId: string; number: string | null; note: string; amount: string }>(sql`

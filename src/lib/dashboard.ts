@@ -49,7 +49,7 @@ async function balances(tx: Transaction, companyId: string, asOf: string) {
 async function results(tx: Transaction, companyId: string, from: string, to: string) {
   const [row] = (await tx.execute<{ sales: string; cogs: string; income: string; expense: string }>(sql`
     SELECT
-      coalesce(sum(l.credit-l.debit) FILTER (WHERE a.control IN ('sales','sales_returns')),0)::text AS sales,
+      coalesce(sum(l.credit-l.debit) FILTER (WHERE a.control IN ('sales','sales_returns','service_income','freight_income')),0)::text AS sales,
       coalesce(sum(l.debit-l.credit) FILTER (WHERE a.control='cogs'),0)::text AS cogs,
       coalesce(sum(l.credit-l.debit) FILTER (WHERE a.type='income'),0)::text AS income,
       coalesce(sum(l.debit-l.credit) FILTER (WHERE a.type='expense'),0)::text AS expense
@@ -97,7 +97,7 @@ export async function loadOverview(companyId: string, range: { from: string; to:
       WITH m AS (SELECT generate_series(${firstMonth}::date, ${monthStart(to)}::date, interval '1 month')::date AS month),
       j AS (
         SELECT date_trunc('month',e.accounting_date)::date AS month,
-          sum(l.credit-l.debit) FILTER (WHERE a.control IN ('sales','sales_returns')) AS sales,
+          sum(l.credit-l.debit) FILTER (WHERE a.control IN ('sales','sales_returns','service_income','freight_income')) AS sales,
           sum(l.debit-l.credit) FILTER (WHERE a.type='expense' AND a.control IS DISTINCT FROM 'cogs') AS expenses,
           sum(CASE WHEN a.type='income' THEN l.credit-l.debit WHEN a.type='expense' THEN l.credit-l.debit ELSE 0 END) AS profit
         FROM effective_vouchers e JOIN journal_lines l ON l.company_id=e.company_id AND l.voucher_id=e.id

@@ -163,7 +163,7 @@ export default async function Dashboard({ params, searchParams }: { params: Prom
     <section className="stat-row" aria-label="Key figures">
       <article className="stat-card">
         <header><span className="stat-icon tone-green"><ShoppingCart size={20} aria-hidden /></span>
-          <div><h2>Net Sales</h2><p>Sales less returns</p></div>
+          <div><h2>Net Sales</h2><p>Sales, services and freight less returns</p></div>
           <CardMenu links={[{ label: "Profit & Loss", href: `${base}/reports/profit-loss?from=${range.from}&to=${range.to}` }]} /></header>
         <div className="stat-body"><p className="stat-value"><Pkr value={data.sales.value} /></p>
           <div className="stat-change"><Change value={data.sales.change} label={vs} /><span>vs previous period</span></div></div>

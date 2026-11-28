@@ -2,6 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Database } from "../src/db";
+import { reconcile } from "../src/lib/audit/reconcile";
 import * as schema from "../src/db/schema";
 import { Exact } from "../src/lib/engine/model";
 import { readLedger } from "../src/lib/engine/read";
@@ -79,6 +80,10 @@ describe.skipIf(!testUrl)("invoice line types, sales executives and receipts on 
 
     const profit = await buildReport(db, "profit-loss", f.companyId, [{ id: f.companyId, name: "Fixture" }], range());
     expect(values(profit, "Gross Sales")?.at(-1)).toBe("850.00");
+    // Service and freight income count as sales in the reconciliation, as they do in the Profit & Loss.
+    const checks = (await db.transaction((tx) => reconcile(tx, f.companyId, { from: day(1), to: end }),
+      { isolationLevel: "repeatable read", accessMode: "read only" })).checks;
+    expect(checks.filter((c) => c.status !== "pass").map((c) => `${c.key}: ${c.summary}`)).toEqual([]);
   });
 
   it("rejects a stock product on a non-product line and leaves existing invoices unrevalued", async () => {

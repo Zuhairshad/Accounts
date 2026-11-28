@@ -43,3 +43,9 @@ Apply migrations `0006` through `0009` before reapplying the restricted database
   `deleted_records`, `restoration_history` and `migration_backup_history` append-only for every role, and block TRUNCATE
   of `audit_logs`.
 - Runtime grants add `SELECT` on `migration_backup_history` for the Super Admin history page. Reapply grants after migrating.
+
+## Sales executive and invoice line type migrations
+
+- **0014** adds `sales_executives` (company-local name, phone, active flag and optimistic version; names are unique per company). Nullable `invoices.sales_executive_id` and `voucher_documents.sales_executive_id` reference it through company-scoped composite keys and are indexed. `invoice_lines.line_type` defaults to `product` and is checked to `product`, `services` or `freight`.
+- **0015** inserts the Service Income (4020), Freight and Transportation Income (4030), Services Expense (5180) and Freight and Transportation Expense (5190) system controls for every existing company. A company whose chart already uses one of those codes or names keeps its own account, and posting a Services or Freight line there reports the missing control. New companies receive the accounts when they are created.
+- An invoice's executive is part of its submitted payload and the column follows the posted payload. A receipt's executive is written when its voucher document is created. Runtime grants add `SELECT, INSERT, UPDATE` on `sales_executives`; reapply them after migrating.

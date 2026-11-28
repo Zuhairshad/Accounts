@@ -30,3 +30,10 @@
 - Audit views require approval permission. Transaction history refers to the state recorded as of the specified system time. Current account and party descriptions can reflect later master-data renames.
 - A4 portrait, column proportions, row counts and margins were estimated from the photographs. Authorized company administrators can change widths, rows per page, row height and margins.
 - Each report reads a repeatable PostgreSQL snapshot per request. Print, PDF, Excel and CSV use the same report query, cell values and sort order. A later request can include entries posted after a screen opened.
+
+## Invoice line types and sales executives
+
+- Classify Product, Services and Freight / Transportation per invoice line rather than per invoice, so one invoice can carry products and a freight charge. Existing lines are Product. Product calculations omit the new field so each existing invoice keeps its effect fingerprint and is not revalued by the next replay.
+- Keep the item kind. Services and freight lines use a service item because an invoice line always names an item and the stock replay depends on that. Their default ledger is a permanent system control for the line type, not the item's service purchase account.
+- Store the receipt's sales executive on its voucher document instead of adding a separate source type, so the receipt remains an ordinary editable CRV or BRV. Executives are deactivated, never deleted.
+- Report collapsible groups only change the screen. Print, PDF, Excel and CSV always contain every row.

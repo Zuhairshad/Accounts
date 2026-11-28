@@ -35,3 +35,13 @@ Verify accounting-date boundaries, opening-only accounts, retained earnings, Tri
 - `e2e/phase5.spec.ts`: keyboard entry, search-to-select, Enter-advance, period badge and reconciliation under the
   production CSP (no CSP violations); permission denial for reconciliation and operations history.
 - Restore drill: `scripts/restore-drill.sh` with `scripts/verify-restore.sql` (manual; executed locally in Phase 5).
+
+## Invoice line types, sales executives and receipts
+
+- `tests/sales-executives.test.ts`: Services and Freight lines post to their own income and expense with no stock or COGS,
+  returns keep the original line type, a stock item is refused on a non-product line, existing invoices keep their effect
+  fingerprint after a mixed invoice is posted, P&L Gross Sales, company-wise type grouping and subtotals, the Daily MIS
+  line-type column, executive master validation, CRV/BRV receipts with executives, the approval path, executive report
+  totals and running totals, and return credit to the original executive.
+- `e2e/sales.spec.ts`: executive master add and deactivate, sale with an executive and a freight line, invoice PDF,
+  Payment Received defaulting to the sale's executive, executive report collapse and Excel download, company-wise type collapse.

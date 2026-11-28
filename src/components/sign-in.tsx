@@ -27,12 +27,12 @@ export function SignInForm() {
     }
   });
 
-  return <form onSubmit={submit} className="mt-7 space-y-5" noValidate>
+  return <form onSubmit={submit} className="adm-sign-in-form" noValidate>
     <label className="field">Username<input autoComplete="username" autoFocus aria-invalid={!!errors.username} {...register("username")} />
       {errors.username && <span className="form-error">{errors.username.message}</span>}</label>
     <label className="field">Password<input type="password" autoComplete="current-password" aria-invalid={!!errors.password} {...register("password")} />
       {errors.password && <span className="form-error">{errors.password.message}</span>}</label>
-    {errors.root && <p className="form-error" role="alert">{errors.root.message}</p>}
-    <Button type="submit" disabled={isSubmitting} className="w-full">{isSubmitting ? <LoaderCircle size={17} className="animate-spin" /> : <LockKeyhole size={17} />}{isSubmitting ? "Signing in…" : "Sign in"}</Button>
+    {errors.root && <p className="form-error adm-form-alert" role="alert">{errors.root.message}</p>}
+    <Button type="submit" disabled={isSubmitting} className="w-full adm-sign-in-submit">{isSubmitting ? <LoaderCircle size={17} className="animate-spin" /> : <LockKeyhole size={17} />}{isSubmitting ? "Signing in…" : "Sign in"}</Button>
   </form>;
 }

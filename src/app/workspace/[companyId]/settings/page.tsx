@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
+import { ArrowLeft } from "lucide-react";
 import { CompanyDetailsForm, MembersForm, RoleForms, YearForm } from "@/components/company-forms";
 import { getActor } from "@/lib/auth";
 import { companyDetails, companyList, companyMembersAndRoles } from "@/lib/companies";
@@ -20,11 +21,21 @@ export default async function Settings({ params }: { params: Promise<{ companyId
     has("manage_company") ? companyDetails(companyId) : null,
     has("manage_users") || has("manage_roles") ? companyMembersAndRoles(companyId) : null,
   ]);
+  const sections = [
+    details && { href: "#company-profile", label: "Profile" },
+    details && { href: "#financial-years", label: "Financial years" },
+    membership && has("manage_users") && { href: "#company-members", label: "Members" },
+    membership && has("manage_roles") && { href: "#company-roles", label: "Roles" },
+  ].filter((section) => !!section);
   return <div className="page-stack">
-    <div className="page-heading"><div><Link href="/workspace/administration" className="text-link">Company directory</Link><h1>{company.name}</h1><p className="muted">{company.active ? "Active company" : "Inactive company"}</p></div></div>
+    <div className="page-heading"><div><Link href="/workspace/administration" className="adm-back"><ArrowLeft size={14} aria-hidden /> Company directory</Link><h1>{company.name}</h1>
+      <p className="adm-heading-meta"><span className={`status ${company.active ? "status-posted" : "adm-status-muted"}`}>{company.active ? "Active company" : "Inactive company"}</span><span className="muted">Company settings</span></p></div>
+      {sections.length > 1 && <nav className="tabs adm-section-nav" aria-label="Settings sections">{sections.map((section) => <a key={section.href} href={section.href}>{section.label}</a>)}</nav>}</div>
     {details && <CompanyDetailsForm company={company} settings={details.settings} />}
-    {details && <div id="financial-years"><YearForm companyId={companyId} years={details.years} active={company.active} /></div>}
-    {membership && has("manage_users") && <MembersForm companyId={companyId} members={membership[0]} roles={membership[1]} actorId={actor.id} />}
+    <div className="adm-settings-pair">
+      {details && <div id="financial-years"><YearForm companyId={companyId} years={details.years} active={company.active} /></div>}
+      {membership && has("manage_users") && <MembersForm companyId={companyId} members={membership[0]} roles={membership[1]} actorId={actor.id} />}
+    </div>
     {membership && has("manage_roles") && <RoleForms companyId={companyId} roles={membership[1]} allowed={company.permissions} />}
   </div>;
 }

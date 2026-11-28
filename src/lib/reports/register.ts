@@ -44,7 +44,7 @@ export async function registerSetting(db:Reader,company:string,kind:RegisterId) 
 
 type Named = {id:string;name:string};
 type Parts = Pick<ReportDocument,"columns"|"rows"|"notes"|"warning"|"layout">;
-export type RegisterLine = { id:string; companyId:string; day:string; ref:string; description:string; type:string; first:string; second:string; balance?:string; time:Date; href?:string };
+export type RegisterLine = { id:string; companyId:string; day:string; ref:string; description:string; type:string; first:string; second:string; balance?:string; time:Date | string; href?:string };
 function rowCells(kind:RegisterId,source:RegisterLine,index:number):ReportRow {
   const serial=integerCell(index+1);
   if (kind==="day-book") return {key:source.id,cells:[serial,dateCell(source.day),textCell(source.type,source.href),textCell(source.description,source.href),
@@ -129,7 +129,7 @@ export async function registerReport(db:Reader,names:Named[],home:string,kind:Re
     });
   const visible=source.filter((row)=>match(row,f.search) && (!f.voucherType || row.type.replaceAll(" ","_")===f.voucherType))
     .map((row)=>names.length>1 ? {...row,description:`${names.find((n)=>n.id===row.companyId)?.name} · ${row.description}`} : row)
-    .sort((a,b)=>a.day.localeCompare(b.day) || a.time.getTime()-b.time.getTime() || a.companyId.localeCompare(b.companyId) || a.id.localeCompare(b.id));
+    .sort((a,b)=>a.day.localeCompare(b.day) || new Date(a.time).getTime()-new Date(b.time).getTime() || a.companyId.localeCompare(b.companyId) || a.id.localeCompare(b.id));
   const rows=visible.map((row,index)=>rowCells(kind,row,index));
   if (kind==="sale-purchase") rows.push({key:"register-total",style:"total",cells:[blankCell(),blankCell(),blankCell(),textCell("Total:"),blankCell(),
     f.blank ? blankCell() : moneyCell(sum(visible,(row)=>row.first)),f.blank ? blankCell() : moneyCell(sum(visible,(row)=>row.second))]});

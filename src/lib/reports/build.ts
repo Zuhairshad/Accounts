@@ -6,6 +6,7 @@ import { karachiToday } from "@/lib/validation";
 import { balanceSheet,journalDetail,profitLoss,summaryReport,trialBalance } from "./financial";
 import { adjustmentsReport,agingReport,inventoryReport,invoiceReport,partiesReport,voucherReport } from "./operational";
 import { registerReport } from "./register";
+import { salesExecutiveReport } from "./sales";
 import { isRegister,reportTitles,type ReportDocument,type ReportFilter,type ReportId } from "./model";
 
 export type ReportCompany={id:string;name:string;details?:string[]};
@@ -56,6 +57,7 @@ export async function buildReport(db:Reader,id:ReportId,home:string,companies:Re
   else if (id==="voucher-register") view=f.status==="posted" ? await voucherReport(db,primary,f) : await journalDetail(db,companies,f,"mis");
   else if (id==="invoice-register" || id==="sales" || id==="purchases" || id==="sales-returns" || id==="purchase-returns") view=await invoiceReport(db,primary,f,id);
   else if (id==="adjustments") view=await adjustmentsReport(db,primary,f);
+  else if (id==="sales-executives") view=await salesExecutiveReport(db,primary,f);
   else view=await inventoryReport(db,primary,f,id);
   const notes=[...view.notes];
   if (f.recordedAt) notes.push(`Historical journal state at ${new Date(f.recordedAt).toISOString()}. Master labels can reflect later renames.`);

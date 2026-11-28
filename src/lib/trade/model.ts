@@ -8,6 +8,18 @@ export const tradeNames: Record<TradeType, string> = {
   sale: "Sales invoice", purchase: "Purchase invoice", sale_return: "Sale return", purchase_return: "Purchase return",
 };
 
+/** Product lines move stock and cost; Services and Freight / Transportation lines post only to their own income or expense. */
+export const lineTypes = ["product", "services", "freight"] as const;
+export type LineType = typeof lineTypes[number];
+export const lineTypeNames: Record<LineType, string> = { product: "Product", services: "Services", freight: "Freight / Transportation" };
+/** System account tags used by non-product lines. Sale returns of every line type use Sales Returns. */
+export const lineTypeAccounts: Record<Exclude<LineType, "product">, { income: string; expense: string }> = {
+  services: { income: "service_income", expense: "service_expense" },
+  freight: { income: "freight_income", expense: "freight_expense" },
+};
+export const lineTypeLabel = (value: string | null | undefined) =>
+  value?.split(/,\s*/).filter(Boolean).map((part) => lineTypeNames[part as LineType] ?? part).join(", ") ?? "";
+
 export const adjustmentKinds = ["add", "deduct", "count", "damaged", "lost", "excess", "opening", "opening_correction", "valuation"] as const;
 export const adjustmentNames: Record<typeof adjustmentKinds[number], string> = {
   add: "Add stock", deduct: "Deduct stock", count: "Physical stock count", damaged: "Damaged stock", lost: "Lost stock",
@@ -30,6 +42,8 @@ const line = z.object({
   originalLineNo: z.number().int().positive().nullable(),
   disposition: z.enum(["saleable", "damaged"]),
   unitLabel: z.string().max(40).optional(), purchaseAccountId: uuid.nullable().optional(),
+  // Absent on lines saved before line types existed; those are Product lines.
+  lineType: z.enum(lineTypes).optional(),
 });
 
 export const invoiceSchema = z.object({
@@ -39,6 +53,7 @@ export const invoiceSchema = z.object({
   withholding: amount, duplicateReason: z.string().trim().max(500),
   lines: z.array(line).min(1, "Add at least one invoice line.").max(100),
   payments: z.array(z.object({ accountId: uuid, amount })).max(20),
+  salesExecutiveId: uuid.nullable().optional(),
 });
 export type InvoiceInput = z.infer<typeof invoiceSchema>;
 
@@ -69,6 +84,8 @@ export type TradeLine = {
   itemId: string; quantity: string; rate: string; description: string; unitLabel: string; originalLineNo: number | null;
   subtotal: string; discount: string; tax: string; amount: string; inventoryCost: string; disposition: "saleable" | "damaged";
   purchaseAccountId: string | null;
+  /** Present only for Services and Freight lines, so the effect fingerprint of existing Product lines is unchanged. */
+  lineType?: Exclude<LineType, "product">;
 };
 export type InvoiceCalculation = {
   subtotal: string; discount: string; tax: string; withholding: string; total: string;

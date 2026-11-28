@@ -9,7 +9,7 @@ export function ReportFilters({id,report,query}:{id:ReportId;report:Awaited<Retu
   const {filter,active,all,heads,contacts,stock,years,year,combined,cross}=report;
   const accountFilters=["mis","general-ledger","cash-bank"].includes(id) || id==="day-book";
   const ledgerFilters=["mis","general-ledger","cash-bank","party-ledger","voucher-register"].includes(id);
-  const partyFilters=["mis","party-ledger","debtors","creditors","aging","combined-parties","invoice-register","sales","purchases","sales-returns","purchase-returns"].includes(id);
+  const partyFilters=["mis","party-ledger","debtors","creditors","aging","combined-parties","invoice-register","sales","purchases","sales-returns","purchase-returns","sales-executives"].includes(id);
   const audit=ledgerFilters && report.selection.every((company)=>company.permissions.includes("approve"));
   const stockFilter=["stock-ledger","inventory-valuation","adjustments"].includes(id);
   const names=new Map(all.map((entry)=>[entry.id,entry.name]));

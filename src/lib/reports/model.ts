@@ -8,7 +8,7 @@ export const reportTitles = {
   "profit-loss": "Profit & Loss", "balance-sheet": "Balance Sheet", debtors: "Debtors Report", creditors: "Creditors Report",
   aging: "Invoice Aging", "voucher-register": "Voucher Register", "invoice-register": "Invoice Register",
   "inventory-valuation": "Inventory Valuation", "stock-ledger": "Stock Ledger", adjustments: "Inventory Adjustment Report",
-  sales: "Sales Summary", purchases: "Purchase Summary", "sales-returns": "Sale Return Report", "purchase-returns": "Purchase Return Report",
+  sales: "Sales Summary", purchases: "Purchase Summary", "sales-executives": "Sales Executive wise Sale Report", "sales-returns": "Sale Return Report", "purchase-returns": "Purchase Return Report",
   "cash-bank": "Cash and Bank Ledgers", "company-wise": "Company-wise Report", "combined-heads": "Combined Company Report",
   "combined-parties": "Combined Debtors & Creditors List", "day-book": "Day Book", "sale-purchase": "Sale / Purchase",
 } as const;
@@ -20,7 +20,13 @@ export const isRegister = (id: string): id is RegisterId => id === "day-book" ||
 export const cashViews = ["cash", "bank", "manual"] as const;
 
 export type Cell = { value: string; kind?: "money" | "date" | "quantity" | "integer"; href?: string };
-export type ReportRow = { key: string; cells: Cell[]; style?: "section" | "total" | "warning"; group?: string };
+/**
+ * `toggle` marks a heading row whose `parent` rows the web view can collapse. Print, PDF and spreadsheet exports
+ * ignore both fields and always show every row.
+ */
+export type ReportRow = {
+  key: string; cells: Cell[]; style?: "section" | "group" | "total" | "warning"; group?: string; toggle?: string; parent?: string;
+};
 export type PrintLayout = { margin: number; rowHeight: number; widths: number[]; slots: number };
 
 export type ReportDocument = {

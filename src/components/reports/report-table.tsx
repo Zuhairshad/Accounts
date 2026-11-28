@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { displayDate } from "@/lib/validation";
-import { isRegister,showCell,type ReportDocument,type ReportRow } from "@/lib/reports/model";
+import { isRegister,type ReportDocument,type ReportRow } from "@/lib/reports/model";
 import { printPlan } from "@/lib/reports/print";
 import { PrintButton } from "./print-button";
+import { ReportRows } from "./report-rows";
 
 export function ReportTable({document,rows}:{document:ReportDocument;rows:ReportRow[]}) {
   const register=isRegister(document.id);
@@ -11,16 +12,8 @@ export function ReportTable({document,rows}:{document:ReportDocument;rows:Report
     <div className="table-scroll"><table className={register?"register-print-table":"report-data-table"}>
       {register && document.layout && <colgroup>{document.layout.widths.map((width,i)=><col key={i} style={{width:`${width/document.layout!.widths.reduce((a,b)=>a+b,0)*100}%`}} />)}</colgroup>}
       <thead><tr>{document.columns.map((col)=><th scope="col" key={col}>{col}</th>)}</tr></thead>
-      <tbody>{rows.map((row,index)=><tr key={row.key} className={row.style?`report-row-${row.style}`:undefined}
-        data-voucher-start={row.group && row.group!==rows[index-1]?.group ? "true" : undefined}>
-        {document.columns.map((_,i)=>{
-          const cell=row.cells[i];
-          return <td key={i} className={cell && ["money","quantity","integer"].includes(cell.kind ?? "")?"report-number":undefined}>
-            {cell?.href ? <Link href={cell.href} className="text-link">{showCell(cell)}</Link> : cell ? showCell(cell) : ""}
-          </td>;
-        })}
-      </tr>)}
-      {register && rows.length===0 && Array.from({length:6},(_,i)=><tr key={i}>{document.columns.map((_,j)=><td key={j}>&nbsp;</td>)}</tr>)}</tbody>
+      <ReportRows columns={document.columns.length} rows={rows} />
+      {register && rows.length===0 && <tbody>{Array.from({length:6},(_,i)=><tr key={i}>{document.columns.map((_,j)=><td key={j}>&nbsp;</td>)}</tr>)}</tbody>}
     </table></div>
     {!rows.length && !register && <div className="empty"><strong>No transactions match the selected filters</strong></div>}
   </section>;

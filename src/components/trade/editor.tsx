@@ -8,12 +8,12 @@ import { Button } from "@/components/ui/button";
 import { formatMoney } from "@/lib/display";
 import { Exact } from "@/lib/engine/model";
 import { inlinePartyAction, invoiceAction, itemAction } from "@/lib/trade/actions";
-import { isReturn, isSale, lineFinancials, type InvoiceInput } from "@/lib/trade/model";
+import { isReturn, isSale, lineFinancials, lineTypeNames, lineTypes, type InvoiceInput, type LineType } from "@/lib/trade/model";
 import type { tradeOptions } from "@/lib/trade/read";
 
 type Options = Awaited<ReturnType<typeof tradeOptions>>;
 type SourceLine = { lineNo: number; itemId: string; description: string; rate: string; unit: string; quantity: string; subtotal: string;
-  discount: string; tax: string; previous: string; available: string };
+  discount: string; tax: string; previous: string; available: string; lineType: LineType };
 type Row = InvoiceInput["lines"][number];
 const emptyRow = (): Row => ({
   itemId: "", description: "", quantity: "", rate: "", discount: "0", tax: "0", historicalCost: "",
@@ -29,7 +29,8 @@ export function InvoiceEditor({ companyId, base, options, initial, source, origi
   const [rows, setRows] = useState<Row[]>(() => {
     if (initial.lines.length) return initial.lines;
     if (source) return source.filter((line) => new Exact(line.available).gt(0)).map((line) => ({ ...emptyRow(),
-      itemId: line.itemId, description: line.description, rate: line.rate, originalLineNo: line.lineNo }));
+      itemId: line.itemId, description: line.description, rate: line.rate, originalLineNo: line.lineNo,
+      lineType: line.lineType === "product" ? undefined : line.lineType }));
     return [emptyRow()];
   });
   const [payments, setPayments] = useState<Settlement[]>(initial.payments);
@@ -61,6 +62,7 @@ export function InvoiceEditor({ companyId, base, options, initial, source, origi
   const availableParties = options.people.filter((person) => person.type === partyType && (person.active || person.id === head.partyId));
   const [itemFinds, setItemFinds] = useState<Record<number, string>>({});
   const availableItems = options.goods.filter((item) => item.active || rows.some((row) => row.itemId === item.id));
+  const executives = options.executives.filter((entry) => entry.active || entry.id === head.salesExecutiveId);
   const updateParty = (partyId: string) => {
     const input = options.people.find((person) => person.id === partyId);
     const date = new Date(`${head.date}T00:00:00Z`);
@@ -85,6 +87,11 @@ export function InvoiceEditor({ companyId, base, options, initial, source, origi
             onChange={(event) => patch({ externalRef: event.target.value })} required={historical} /></label>
           <label className="field">Purchase order reference<input value={head.poRef} maxLength={120} onChange={(event) => patch({ poRef: event.target.value })} /></label>
           {!returned && <label className="field">Due date<input type="date" value={head.dueOn} min={head.date} onChange={(event) => patch({ dueOn: event.target.value })} /></label>}
+          {head.type === "sale" && <label className="field">Sales executive<select aria-label="Sales executive" value={head.salesExecutiveId ?? ""}
+            onChange={(event) => patch({ salesExecutiveId: event.target.value || null })}>
+            <option value="">No sales executive</option>{executives.map((entry) => <option key={entry.id} value={entry.id}>
+              {entry.name}{entry.active ? "" : " (inactive)"}</option>)}
+          </select></label>}
           {returned && <label className="field">Return reason<input value={head.reason} maxLength={1000} onChange={(event) => patch({ reason: event.target.value })} required /></label>}
           <label className="field">Narration<input value={head.narration} maxLength={1000} onChange={(event) => patch({ narration: event.target.value })} /></label>
           <label className="field field-wide">{historical ? "Verified values and cost treatment" : "Notes"}<textarea
@@ -93,7 +100,7 @@ export function InvoiceEditor({ companyId, base, options, initial, source, origi
             <input value={head.duplicateReason} maxLength={500} onChange={(event) => patch({ duplicateReason: event.target.value })} /></label>}
         </div>
         <div className="table-scroll mt-5"><table className="entry-table trade-entry"><thead><tr>
-          <th>Item and description</th><th>Quantity</th><th>Unit</th><th>Rate (PKR)</th>
+          <th>Line type</th><th>Item and description</th><th>Quantity</th><th>Unit</th><th>Rate (PKR)</th>
           {historical && sale && <th>Verified original cost</th>}
           <th>Discount</th>{(taxEnabled || linked) && <th>Tax</th>}
           {head.type === "sale_return" && <th>Disposition</th>}<th>Line total</th><th aria-label="Remove" />
@@ -103,11 +110,21 @@ export function InvoiceEditor({ companyId, base, options, initial, source, origi
           const changeNumber = (field: "quantity" | "rate" | "discount" | "tax" | "historicalCost", value: string) => {
             if (/^\d{0,18}(?:\.\d{0,10})?$/.test(value)) updateLine(index, { [field]: value });
           };
+          const kind = line.lineType ?? "product";
           return <tr key={original?.lineNo ?? index}><td>
+            {original ? lineTypeNames[original.lineType] : <select aria-label={`Line type line ${index+1}`} value={kind}
+              onChange={(event) => {
+                const value = event.target.value as LineType;
+                updateLine(index, { lineType: value === "product" ? undefined : value,
+                  ...(value !== "product" && item?.kind === "stock" ? { itemId: "" } : {}) });
+              }}>{lineTypes.map((value) => <option key={value} value={value}>{lineTypeNames[value]}</option>)}</select>}
+          </td><td>
             {original ? <strong>{original.description} · line {original.lineNo}</strong> : (() => {
               const label = (entry: typeof availableItems[number]) => `${entry.sku ? `${entry.sku} · ` : ""}${entry.name}${entry.kind === "service" ? " (service)" : ""}`;
               const query = itemFinds[index] ?? "";
-              const visible = availableItems.filter((entry) => entry.id === line.itemId || matchesSearch(query, label(entry)));
+              // Services and freight lines carry no stock, so only service items fit them.
+              const visible = availableItems.filter((entry) => (kind === "product" || entry.kind === "service") &&
+                (entry.id === line.itemId || matchesSearch(query, label(entry))));
               const choose = (itemId: string) => updateLine(index, { itemId, unitLabel: undefined, purchaseAccountId: undefined });
               return <>
                 <input type="search" className="line-find" aria-label={`Find item line ${index+1}`} placeholder="Type to search, Enter to choose" value={query}

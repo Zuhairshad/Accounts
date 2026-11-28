@@ -82,7 +82,11 @@ async function adoptLegacy(tx: Transaction, context: FinanceContext, id: string)
 
 export async function saveManual(
   tx: Transaction, context: FinanceContext,
-  { entry, id, version, reason, intent }: { entry: VoucherInput; id?: string; version: number; reason: string; intent: "draft" | "post" | "submit" },
+  { entry, id, version, reason, intent, salesExecutiveId }: {
+    entry: VoucherInput; id?: string; version: number; reason: string; intent: "draft" | "post" | "submit";
+    /** A validated executive credited with a new receipt. Edits keep the stored executive. */
+    salesExecutiveId?: string | null;
+  },
 ) {
   const { companyId, actorId } = context;
   context.require(id ? "edit" : "create");
@@ -108,7 +112,7 @@ export async function saveManual(
   if (!existing) {
     [existing] = await tx.insert(voucherDocuments).values({
       companyId, type: entry.type, date: entry.date, reference: entry.reference, createdBy: actorId,
-      draft, submittedBy: intent === "submit" ? actorId : null,
+      draft, submittedBy: intent === "submit" ? actorId : null, salesExecutiveId: salesExecutiveId ?? null,
     }).returning();
     await tx.insert(auditLogs).values({ companyId, actorId, action: "voucher.created", data: { documentId: existing.id, intent } });
     if (intent !== "post") {

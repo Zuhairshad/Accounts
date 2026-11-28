@@ -115,7 +115,8 @@ describe.skipIf(!testDb)("Phase 4 reporting against PostgreSQL",()=>{
     `)).rows[0].stamp;
     await f.lock((tx)=>changeVoucher(tx,f.ctx,{id:root.id,version:root.version,operation:"delete",reason:"Audit history test"}));
     expect((await f.inspect("mis",{...feb,mode:"vouchers"})).rows).toHaveLength(0);
-    expect((await f.inspect("mis",{...feb,mode:"vouchers",status:"void"})).rows.every((r)=>r.cells[10]?.value==="void")).toBe(true);
+    const voided=await f.inspect("mis",{...feb,mode:"vouchers",status:"void"});
+    expect(voided.rows.every((r)=>r.cells[voided.columns.indexOf("Status")]?.value==="void")).toBe(true);
     expect(table(await f.inspect("mis",{...feb,recordedAt:captured}),"total")?.slice(5,7)).toEqual(["430.00","430.00"]);
     await f.lock((tx)=>changeVoucher(tx,f.ctx,{id:root.id,version:root.version+1,operation:"restore",reason:"Restore verified original"}));
     expect(table(await f.inspect("mis"),"total")?.slice(5,7)).toEqual(["430.00","430.00"]);

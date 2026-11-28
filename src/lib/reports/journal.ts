@@ -109,20 +109,24 @@ export type Detail = {
   id: string; companyId: string; documentId: string; day: string; number: string; type: string; invoice: string | null;
   accountId: string; account: string; party: string | null; narration: string; debit: string; credit: string;
   running: string; partyRunning: string; status: string; reference: string;
+  /** Invoice line types behind an invoice journal line, comma separated. Null outside posted invoices. */
+  lineType: string | null;
 };
 
 export async function detail(db: Reader, ids: string[], f: ReportFilter, liquidity = false, partyOnly = false) {
   const modeCondition = liquidity ? sql`a.liquidity IS NOT NULL` : sql`true`;
   const rows = (await db.execute<Detail>(sql`
     WITH RECURSIVE ${mainTree(ids,f.main)}, e AS (${effective(ids,f.recordedAt)}), book AS (
-      SELECT l.id,l.company_id,l.voucher_id,l.account_id,l.party_id,l.description,l.debit,l.credit,l.line_no,
+      SELECT l.id,l.company_id,l.voucher_id,l.account_id,l.party_id,l.item_id,l.description,l.debit,l.credit,l.line_no,
         sum(l.debit-l.credit) OVER (PARTITION BY l.company_id,l.account_id ORDER BY v.accounting_date,v.created_at,v.document_id,l.line_no,l.id) AS running,
         sum(l.debit-l.credit) OVER (PARTITION BY l.company_id,l.party_id ORDER BY v.accounting_date,v.created_at,v.document_id,l.line_no,l.id) AS party_running
       FROM e v JOIN journal_lines l ON l.company_id=v.company_id AND l.voucher_id=v.id WHERE v.accounting_date<=${f.to}::date
     )
     SELECT l.id,l.company_id AS "companyId",v.document_id AS "documentId",v.accounting_date::text AS day,v.number,v.type,i.number AS invoice,
       a.id AS "accountId",a.code||' · '||a.name AS account,p.name AS party,coalesce(nullif(l.description,''),v.narration) AS narration,
-      l.debit::text,l.credit::text,l.running::text,l.party_running::text AS "partyRunning",'posted' AS status,v.reference
+      l.debit::text,l.credit::text,l.running::text,l.party_running::text AS "partyRunning",'posted' AS status,v.reference,
+      (SELECT string_agg(DISTINCT x.line_type,', ') FROM invoice_lines x WHERE x.company_id=l.company_id AND x.posting_voucher_id=l.voucher_id
+        AND (l.item_id IS NULL OR x.item_id=l.item_id)) AS "lineType"
     FROM book l JOIN e v ON v.company_id=l.company_id AND v.id=l.voucher_id
     JOIN accounts a ON a.company_id=l.company_id AND a.id=l.account_id
     LEFT JOIN report_account_mappings m ON m.company_id=a.company_id AND m.account_id=a.id
@@ -150,7 +154,7 @@ export async function inactiveDetail(db: Reader, ids: string[], f: ReportFilter)
       d.type,i.number AS invoice,a.id AS "accountId",concat_ws(' · ',a.code,a.name) AS account,p.name AS party,
       coalesce(nullif(l.description,''),q.entry->>'description',d.draft#>>'{entry,narration}',v.narration,'') AS narration,
       coalesce(l.debit::text,q.entry->>'debit','0') AS debit,coalesce(l.credit::text,q.entry->>'credit','0') AS credit,
-      '0' AS running,'0' AS "partyRunning",d.status::text,d.reference
+      '0' AS running,'0' AS "partyRunning",d.status::text,d.reference,NULL::text AS "lineType"
     FROM states d LEFT JOIN vouchers v ON v.company_id=d.company_id AND v.id=d.current_voucher_id
     LEFT JOIN journal_lines l ON l.company_id=v.company_id AND l.voucher_id=v.id
     LEFT JOIN LATERAL jsonb_array_elements(CASE WHEN d.current_voucher_id IS NULL AND jsonb_typeof(d.draft#>'{entry,lines}')='array'

@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { accountingAccess } from "@/lib/engine/access";
 import { AccountingSettings, ChartIndex, OpeningIndex, PartyIndex, PartyReports, Recycling, VoucherRegister, type Screen } from "@/components/accounting/index-views";
 import { LegacyRepairs } from "@/components/accounting/legacy-repairs";
+import { ReceiptEntry, SalesExecutiveIndex } from "@/components/accounting/sales-views";
 import type { Query } from "@/lib/range";
 
 export default async function AccountingSection({ params, searchParams }: {
@@ -15,6 +16,7 @@ export default async function AccountingSection({ params, searchParams }: {
     parties: () => PartyIndex(screen), "party-ledger": () => PartyIndex(screen), allocations: () => PartyIndex(screen), opening: () => OpeningIndex(screen),
     debtors: () => PartyReports(screen, "customer"), creditors: () => PartyReports(screen, "supplier"),
     recycle: () => Recycling(screen), settings: () => AccountingSettings(screen), repair: () => LegacyRepairs(screen),
+    "sales-executives": () => SalesExecutiveIndex(screen), receipts: () => ReceiptEntry(screen),
   };
   if (!Object.hasOwn(views, section)) notFound();
   return <div className="page-stack">{await views[section]()}</div>;

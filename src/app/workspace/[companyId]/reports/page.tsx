@@ -5,7 +5,7 @@ import { combinedIds,reportTitles,type ReportId } from "@/lib/reports/model";
 
 const groups: { title:string; ids:ReportId[] }[]=[
   {title:"Financial statements",ids:["mis","trial-balance","profit-loss","balance-sheet","general-ledger","cash-bank"]},
-  {title:"Sales, purchases and parties",ids:["invoice-register","sales","purchases","sales-returns","purchase-returns","party-ledger","debtors","creditors","aging"]},
+  {title:"Sales, purchases and parties",ids:["invoice-register","sales","sales-executives","purchases","sales-returns","purchase-returns","party-ledger","debtors","creditors","aging"]},
   {title:"Stock and registers",ids:["inventory-valuation","stock-ledger","adjustments","voucher-register","day-book","sale-purchase"]},
   {title:"Company reports",ids:[...combinedIds]},
 ];

@@ -1,6 +1,6 @@
 import { AccountingError, Exact, type EntryLine } from "@/lib/engine/model";
 import {
-  amountText, isReturn, isSale, lineFinancials, money, proratedPart, rateText,
+  amountText, isReturn, isSale, lineFinancials, lineTypeAccounts, lineTypeNames, money, proratedPart, rateText,
   type AdjustmentCalculation, type AdjustmentInput, type InvoiceCalculation, type InvoiceInput, type ItemFacts, type TradeLine,
 } from "./model";
 
@@ -108,8 +108,21 @@ function invoiceEffect(
     const { gross, discount: reduction, net, tax: levy } = lineFinancials(line, originalLine, before);
     if (net.lt(0)) throw new AccountingError("Discount cannot exceed a line’s subtotal.");
     const account = (tag: string) => book.controls.get(tag);
+    // A return keeps the classification of the line it returns.
+    const lineType = originalLine ? originalLine.lineType ?? "product" : line.lineType ?? "product";
     let inventoryCost = decimal(0);
-    if (item.kind === "stock") {
+    let purchaseAccountId = originalLine?.purchaseAccountId ?? line.purchaseAccountId ?? null;
+    if (lineType !== "product") {
+      if (item.kind === "stock") throw new AccountingError(`${lineTypeNames[lineType]} lines use a service item, not the stock product ${item.name}.`);
+      const tags = lineTypeAccounts[lineType];
+      if (sale) {
+        add(journal, account(returned ? "sales_returns" : tags.income), net.times(-direction),
+          returned ? "Sales return" : `${lineTypeNames[lineType]} income`, item.id);
+      } else {
+        purchaseAccountId ??= account(tags.expense) ?? null;
+        add(journal, purchaseAccountId, net.times(direction), `${lineTypeNames[lineType]} expense`, item.id);
+      }
+    } else if (item.kind === "stock") {
       const current = position(positions, item.id);
       if (input.type === "purchase") {
         inventoryCost = net;
@@ -136,7 +149,7 @@ function invoiceEffect(
     } else if (!sale) {
       add(journal, originalLine?.purchaseAccountId ?? line.purchaseAccountId, net.times(direction), "Service purchase or return", item.id);
     }
-    if (sale) add(journal, account(returned ? "sales_returns" : "sales"), net.times(-direction),
+    if (sale && lineType === "product") add(journal, account(returned ? "sales_returns" : "sales"), net.times(-direction),
       returned ? "Sales return" : "Sales revenue", item.id);
     subtotal = subtotal.plus(gross);
     discount = discount.plus(reduction);
@@ -146,7 +159,7 @@ function invoiceEffect(
       description: line.description, unitLabel: originalLine?.unitLabel ?? line.unitLabel ?? item.unit,
       originalLineNo: line.originalLineNo, subtotal: amountText(gross), discount: amountText(reduction),
       tax: amountText(levy), amount: amountText(net.plus(levy)), inventoryCost: amountText(inventoryCost),
-      disposition: line.disposition, purchaseAccountId: originalLine?.purchaseAccountId ?? line.purchaseAccountId ?? null,
+      disposition: line.disposition, purchaseAccountId, ...(lineType === "product" ? {} : { lineType }),
     };
   });
   const total = subtotal.minus(discount).plus(tax);

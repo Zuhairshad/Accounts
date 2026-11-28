@@ -3,7 +3,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type { Transaction } from "@/db";
 import {
   accounts, auditLogs, companySettings, deletedRecords, inventoryAdjustments, inventoryValuations, invoiceLines, invoices, items,
-  journalLines, parties, restorationHistory, revisions, stockMoves, tradeRegisterEntries, units, voucherDocuments,
+  journalLines, parties, restorationHistory, revisions, salesExecutives, stockMoves, tradeRegisterEntries, units, voucherDocuments,
 } from "@/db/schema";
 import { nextSequence } from "@/lib/accounting";
 import { AccountingError, Exact, type JournalInput } from "@/lib/engine/model";
@@ -81,15 +81,31 @@ async function validateInvoice(tx: Transaction, context: FinanceContext, input: 
     if (!returned && (line.originalLineNo || line.disposition !== "saleable")) throw new AccountingError("Return metadata is only available on returns.");
     if (line.disposition === "damaged" && input.type !== "sale_return") throw new AccountingError("Damaged disposition applies to sale returns.");
     if (new Exact(line.quantity).lte(0)) throw new AccountingError("Every item row needs a positive quantity.");
-    const purchaseAccountId = !isSale(input.type) && item.kind === "service" ? (line.purchaseAccountId ?? item.purchaseAccountId) : null;
-    if (!isSale(input.type) && item.kind === "service" && !original) {
+    const typed = !!line.lineType && line.lineType !== "product";
+    if (typed && item.kind === "stock") throw new AccountingError("Services and freight lines need a service item, not a stock product.");
+    // Services and freight purchases default to their own expense control instead of the item's service purchase account.
+    const purchaseAccountId = !isSale(input.type) && item.kind === "service" ? (line.purchaseAccountId ?? (typed ? null : item.purchaseAccountId)) : null;
+    if (!isSale(input.type) && item.kind === "service" && !original && (!typed || purchaseAccountId)) {
       const account = purchaseAccountId ? accountById.get(purchaseAccountId) : undefined;
       if (!account?.active || account.control || !["asset","expense"].includes(account.type) || account.liquidity) {
         throw new AccountingError("Choose an active expense or non-cash asset account for the service item.");
       }
     }
-    return { ...line, description: line.description || item.name, unitLabel: line.unitLabel || item.unit, purchaseAccountId };
+    return { ...line, description: line.description || item.name, unitLabel: line.unitLabel || item.unit, purchaseAccountId,
+      lineType: typed ? line.lineType : undefined };
   });
+  const salesExecutiveId = input.type === "sale" ? input.salesExecutiveId ?? null : null;
+  if (input.salesExecutiveId && input.type !== "sale") throw new AccountingError("A sales executive applies to sale invoices only.");
+  if (salesExecutiveId) {
+    const [executive] = await tx.select().from(salesExecutives)
+      .where(and(eq(salesExecutives.companyId, companyId), eq(salesExecutives.id, salesExecutiveId)));
+    const [saved] = id ? await tx.select({ salesExecutiveId: invoices.salesExecutiveId }).from(invoices)
+      .where(and(eq(invoices.companyId, companyId), eq(invoices.id, id))) : [];
+    // An inactive executive stays valid on a document that already carried them.
+    if (!executive || (!executive.active && !historical && saved?.salesExecutiveId !== executive.id)) {
+      throw new AccountingError("Select an active sales executive in this company.");
+    }
+  }
   for (const payment of input.payments) {
     const account = accountById.get(payment.accountId);
     if (!account?.active || !account.liquidity || new Exact(payment.amount).lte(0)) throw new AccountingError("Use an active cash or bank account and a positive settlement amount.");
@@ -105,7 +121,7 @@ async function validateInvoice(tx: Transaction, context: FinanceContext, input: 
       context.require("approve");
     }
   }
-  return { ...input, lines };
+  return { ...input, lines, salesExecutiveId };
 }
 
 async function checkDependencies(tx: Transaction, companyId: string, invoice: Invoice) {
@@ -211,11 +227,11 @@ async function writeEffect(tx: Transaction, context: FinanceContext, source: Sou
       date: input.date, dueOn: input.dueOn || null, partyId: input.partyId, originalInvoiceId: input.originalInvoiceId, exchangeReturnId: input.exchangeReturnId,
       number: source.number ?? await sourceNumber(tx, companyId, input.date, input.type),
       voucherId: next.voucherId, externalRef: input.externalRef, poRef: input.poRef, duplicateReason: input.duplicateReason,
-      payload: input, calculation, effectHash: hash, status: "posted", total: calculation.total,
+      payload: input, calculation, effectHash: hash, status: "posted", total: calculation.total, salesExecutiveId: input.salesExecutiveId ?? null,
       partyAmount: calculation.partyAmount, appliedCredit: calculation.appliedCredit, version: source.version + 1,
     }).where(and(eq(invoices.companyId, companyId), eq(invoices.id, source.id))).returning();
-    await tx.insert(invoiceLines).values(calculation.lines.map(({ quantity, purchaseAccountId: _purchaseAccount, ...line }, index) => ({
-      ...line, qty: quantity, companyId, invoiceId: source.id, postingVoucherId: next.voucherId, lineNo: index + 1,
+    await tx.insert(invoiceLines).values(calculation.lines.map(({ quantity, purchaseAccountId: _purchaseAccount, lineType, ...line }, index) => ({
+      ...line, lineType: lineType ?? "product", qty: quantity, companyId, invoiceId: source.id, postingVoucherId: next.voucherId, lineNo: index + 1,
     })));
     await tx.insert(tradeRegisterEntries).values({ companyId, invoiceId: source.id }).onConflictDoNothing();
     await history(tx, context, "invoice", source, updated, reason);
@@ -308,13 +324,14 @@ export async function saveInvoice(tx: Transaction, context: FinanceContext, data
     [before] = await tx.insert(invoices).values({
       companyId, type: input.type, date: input.date, partyId: input.partyId, dueOn: input.dueOn || null, total: "0",
       externalRef: input.externalRef, poRef: input.poRef, originalInvoiceId: input.originalInvoiceId, exchangeReturnId: input.exchangeReturnId,
-      createdBy: actorId, payload: input,
+      createdBy: actorId, payload: input, salesExecutiveId: input.salesExecutiveId,
     }).returning();
     if (data.intent === "draft") await history(tx, context, "invoice", null, before, "Draft created");
   } else if (data.intent === "draft") {
     const [updated] = await tx.update(invoices).set({
       date: input.date, partyId: input.partyId, dueOn: input.dueOn || null, externalRef: input.externalRef, poRef: input.poRef,
       originalInvoiceId: input.originalInvoiceId, exchangeReturnId: input.exchangeReturnId, payload: input, version: before.version + 1,
+      salesExecutiveId: input.salesExecutiveId,
     }).where(eq(invoices.id, before.id)).returning();
     await history(tx, context, "invoice", before, updated, "Draft changed");
   }

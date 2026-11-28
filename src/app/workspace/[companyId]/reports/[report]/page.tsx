@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Download,FileSpreadsheet,Printer } from "lucide-react";
+import { ArrowLeft,CalendarDays,ChevronLeft,ChevronRight,Download,FileSpreadsheet,FileText,Info,Printer,TriangleAlert } from "lucide-react";
 import { AccessError } from "@/lib/auth";
 import { accountingAccess } from "@/lib/engine/access";
 import { AccountingError } from "@/lib/engine/model";
@@ -37,8 +37,10 @@ export default async function ReportPage({params,searchParams}:{params:Promise<{
   try {data=await loadReport(companyId,id,query,preview?"print":"view",!preview);}
   catch(error) {
     if (error instanceof AccessError) notFound();
-    if (error instanceof AccountingError) return <section className="panel"><h1>Report filters need attention</h1><p role="alert" className="form-error mt-3">{error.message}</p>
-      <Link className="text-link mt-4 block" href={`${root}/${id}`}>Reset report filters</Link></section>;
+    if (error instanceof AccountingError) return <section className="panel rep-alert">
+      <span className="stat-icon tone-red" aria-hidden><TriangleAlert size={19} /></span>
+      <div><h1>Report filters need attention</h1><p role="alert" className="form-error">{error.message}</p>
+        <Button asChild variant="outline" className="button-small"><Link href={`${root}/${id}`}>Reset report filters</Link></Button></div></section>;
     throw error;
   }
   const {document,filter,active,selection}=data;
@@ -53,19 +55,19 @@ export default async function ReportPage({params,searchParams}:{params:Promise<{
     restore:active.permissions.includes("restore"),post:active.permissions.includes("post")};
   const local=selection.length===1 && selection[0].id===companyId;
   const balances=register ? Object.fromEntries(document.rows.map((row)=>[row.key, row.cells[6] ? showCell(row.cells[6]) : ""])) : {};
-  return <div className="page-stack">
+  return <div className="page-stack rep-page">
     <PageHeading title={document.title} company={document.scope.join(" · ")} toolbar={<>
-      <Link className="text-link" href={root}>All reports</Link>
-      {can("print") && <Button asChild variant="outline"><a href={href({preview:"1"})}><Printer size={16} /> Print Preview</a></Button>}
+      <Button asChild variant="ghost" className="button-small"><Link href={root}><ArrowLeft size={15} aria-hidden />All reports</Link></Button>
+      {can("print") && <Button asChild variant="outline" className="button-small"><a href={href({preview:"1"})}><Printer size={15} /> Print Preview</a></Button>}
       {can("export") && <>
-        <Button asChild variant="outline"><a href={href({format:"pdf"},true)}><Download size={16} /> Download PDF</a></Button>
-        <Button asChild variant="outline"><a href={href({format:"xlsx"},true)}><FileSpreadsheet size={16} /> Download Excel</a></Button>
-        <Button asChild variant="outline"><a href={href({format:"csv"},true)}>Download CSV</a></Button>
+        <Button asChild variant="outline" className="button-small"><a href={href({format:"pdf"},true)}><Download size={15} /> Download PDF</a></Button>
+        <Button asChild variant="outline" className="button-small"><a href={href({format:"xlsx"},true)}><FileSpreadsheet size={15} /> Download Excel</a></Button>
+        <Button asChild variant="outline" className="button-small"><a href={href({format:"csv"},true)}><FileText size={15} /> Download CSV</a></Button>
       </>}
     </>} />
     <ReportFilters id={id} report={data} query={query} />
-    <div className="finance-toolbar print-hide">
-      <span className="muted">{displayDate(document.from)} to {displayDate(document.to)}</span>
+    <div className="finance-toolbar rep-meta print-hide">
+      <span className="rep-period"><CalendarDays size={14} aria-hidden />{displayDate(document.from)} to {displayDate(document.to)}</span>
       {register && can("print") && <Link className="text-link" href={href({preview:"1",blank:"1"})}>Blank template preview</Link>}
       {register && can("export") && <a className="text-link" href={href({format:"pdf",blank:"1"},true)}>Blank template PDF</a>}
       {register && !manual && <Link className="text-link" href={href(id==="day-book"?{perspective:"manual"}:{mode:"manual"})}>Register-only entry</Link>}
@@ -78,11 +80,11 @@ export default async function ReportPage({params,searchParams}:{params:Promise<{
       stock={data.stock.filter((r)=>r.active)} linkable={data.linkable} balances={balances}
       rights={rights} today={filter.to} deleted={filter.deleted} />}
     {!filter.deleted && <ReportTable document={document} rows={document.rows.slice((page-1)*pageSize,page*pageSize)} />}
-    {pages>1 && !filter.deleted && <nav className="finance-toolbar print-hide">
-      {page>1 && <Link className="text-link" href={href({page:String(page-1)})}>Previous page</Link>}
-      <span>Page {page} of {pages}. Downloads include every filtered row.</span>
-      {page<pages && <Link className="text-link" href={href({page:String(page+1)})}>Next page</Link>}
+    {pages>1 && !filter.deleted && <nav className="rep-pager print-hide">
+      {page>1 && <Button asChild variant="outline" className="button-small"><Link href={href({page:String(page-1)})}><ChevronLeft size={15} aria-hidden />Previous page</Link></Button>}
+      <span className="muted">Page {page} of {pages}. Downloads include every filtered row.</span>
+      {page<pages && <Button asChild variant="outline" className="button-small"><Link href={href({page:String(page+1)})}>Next page<ChevronRight size={15} aria-hidden /></Link></Button>}
     </nav>}
-    <div className="space-y-1 muted print-hide">{document.notes.map((note,i)=><p key={i}>{note}</p>)}</div>
+    {document.notes.length>0 && <div className="rep-notes print-hide"><Info size={15} aria-hidden /><div>{document.notes.map((note,i)=><p key={i}>{note}</p>)}</div></div>}
   </div>;
 }

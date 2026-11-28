@@ -450,15 +450,7 @@ async function plan(tx: Transaction, data: Dataset, mapping: Mapping, actorName:
   for (const batch of chunk(stockRows, 500)) await tx.insert(stockMoves).values(batch);
 
   /* Advance document sequences beyond imported numbers in the new numbering format. */
-  for (const companyId of new Set(companyTarget.values())) {
-    await tx.execute(sql`
-      INSERT INTO document_sequences(company_id,year_id,kind,last_value)
-      SELECT v.company_id,p.year_id,v.type::text,max((regexp_match(v.number,'^(?:[A-Za-z0-9]+-)?[A-Za-z_]+-\\d{8}-(\\d{1,9})$'))[1]::int)
-      FROM vouchers v JOIN accounting_periods p ON p.company_id=v.company_id AND p.id=v.period_id
-      WHERE v.company_id=${companyId} AND v.number ~ '^(?:[A-Za-z0-9]+-)?[A-Za-z_]+-\\d{8}-\\d{1,9}$'
-      GROUP BY v.company_id,p.year_id,v.type
-      ON CONFLICT (company_id,year_id,kind) DO UPDATE SET last_value=greatest(${documentSequences.lastValue},excluded.last_value)`);
-  }
+  for (const companyId of new Set(companyTarget.values())) await advanceSequences(tx, companyId);
   for (const batch of chunk(records, 500)) await tx.insert(legacyImportRecords).values(batch);
   for (const companyId of new Set(companyTarget.values())) {
     await tx.insert(auditLogs).values({ companyId, actorId: actor.id, action: "legacy.imported", data: { sourceSha256: sourceSha } });
@@ -480,9 +472,29 @@ async function plan(tx: Transaction, data: Dataset, mapping: Mapping, actorName:
   return finish(report);
 }
 
+/** Advance voucher and invoice number sequences beyond imported numbers in the new numbering format. */
+export async function advanceSequences(tx: Transaction, companyId: string) {
+  await tx.execute(sql`
+    INSERT INTO document_sequences(company_id,year_id,kind,last_value)
+    SELECT v.company_id,p.year_id,v.type::text,max((regexp_match(v.number,'^(?:[A-Za-z0-9]+-)?[A-Za-z_]+-\\d{8}-(\\d{1,9})$'))[1]::int)
+    FROM vouchers v JOIN accounting_periods p ON p.company_id=v.company_id AND p.id=v.period_id
+    WHERE v.company_id=${companyId} AND v.number ~ '^(?:[A-Za-z0-9]+-)?[A-Za-z_]+-\\d{8}-\\d{1,9}$'
+    GROUP BY v.company_id,p.year_id,v.type
+    ON CONFLICT (company_id,year_id,kind) DO UPDATE SET last_value=greatest(${documentSequences.lastValue},excluded.last_value)`);
+  // Invoice numbers (e.g. PI-20261128-0012) continue their own series, as new invoices do (source:<type>).
+  await tx.execute(sql`
+    INSERT INTO document_sequences(company_id,year_id,kind,last_value)
+    SELECT i.company_id,y.id,'source:'||i.type::text,max((regexp_match(i.number,'^(?:[A-Za-z0-9]+-)?[A-Za-z_]+-\\d{8}-(\\d{1,9})$'))[1]::int)
+    FROM invoices i JOIN financial_years y ON y.company_id=i.company_id AND i.accounting_date BETWEEN y.starts_on AND y.ends_on
+    WHERE i.company_id=${companyId} AND i.number ~ '^(?:[A-Za-z0-9]+-)?[A-Za-z_]+-\\d{8}-\\d{1,9}$'
+    GROUP BY i.company_id,y.id,i.type
+    ON CONFLICT (company_id,year_id,kind) DO UPDATE SET last_value=greatest(${documentSequences.lastValue},excluded.last_value)`);
+}
+
 const compareIds = (a: string, b: string) => (/^\d+$/.test(a) && /^\d+$/.test(b) ? Number(a) - Number(b) : a.localeCompare(b));
 
-async function verify(tx: Transaction, data: Dataset, companyTarget: Map<string, string>, accountTarget: Map<string, { id: string }>,
+/** Source vs target verification, shared with the delta merge (legacy-delta.ts). */
+export async function verify(tx: Transaction, data: Dataset, companyTarget: Map<string, string>, accountTarget: Map<string, { id: string }>,
   partyTarget: Map<string, string>, openings: { company: string; value: Decimal }[]): Promise<Report["verification"]> {
   const differences: Difference[] = [];
   const add = (scope: string, key: string, source: Decimal, target: Decimal, explained: Decimal) => {
@@ -559,7 +571,7 @@ async function verify(tx: Transaction, data: Dataset, companyTarget: Map<string,
     }
     // Record counts.
     const [counts] = (await tx.execute<{ vouchers: string; invoices: string; parties: string; items: string }>(sql`SELECT
-      (SELECT count(*) FROM vouchers WHERE company_id=${companyId} AND status='posted')::text AS vouchers,
+      (SELECT count(*) FROM effective_vouchers WHERE company_id=${companyId})::text AS vouchers,
       (SELECT count(*) FROM invoices WHERE company_id=${companyId})::text AS invoices,
       (SELECT count(*) FROM parties WHERE company_id=${companyId})::text AS parties,
       (SELECT count(*) FROM inventory_items WHERE company_id=${companyId})::text AS items`)).rows;

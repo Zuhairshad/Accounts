@@ -1,13 +1,15 @@
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { and, eq, sql } from "drizzle-orm";
 import type { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Database } from "../src/db";
 import * as schema from "../src/db/schema";
 import { normalize, legacyDate, legacyNumber } from "../src/lib/legacy/normalize";
+import { runLegacyDelta, type DeltaResult } from "../src/lib/legacy/delta";
 import { runLegacyImport, withdrawImport, type Approval, type Result } from "../src/lib/legacy/load";
 import { LegacySource, mappingSchema, type Mapping } from "../src/lib/legacy/source";
 import { saveInvoice } from "../src/lib/trade/service";
@@ -182,5 +184,81 @@ describe.skipIf(!testUrl)("legacy SQLite migration on PostgreSQL", () => {
     const result = await execute(p, "dry-run");
     expect(result.status).toBe("fatal");
     expect(result.report.issues.map((i) => i.code)).toContain("target-not-empty");
+  });
+});
+
+// Kept in this file so its serializable imports never run concurrently with the migration tests above.
+describe.skipIf(!testUrl)("legacy delta merge", () => {
+  let pool: Pool;
+  let db: Database;
+  let dir: string;
+  let actor: string;
+  beforeAll(async () => {
+    ({ pool, db } = connect());
+    dir = mkdtempSync(join(tmpdir(), "azam-delta-"));
+    actor = `delta-${randomUUID().slice(0, 8)}`;
+    await db.insert(schema.users).values({ username: actor, displayName: "Delta operator", passwordHash: "test-only", superAdmin: true });
+  });
+  afterAll(async () => { await pool?.end(); rmSync(dir, { recursive: true, force: true }); });
+
+  const approve = (result: Result | DeltaResult): Approval => ({
+    approvedBy: "Owner", role: "Owner", approvedAt: "2026-11-28", notes: "Test approval.", reportSha256: result.reportSha256,
+    accepted: Object.fromEntries(result.report.issues.filter((i) => ["blocking", "review"].includes(i.severity)).map((i) => [i.code, i.count])),
+  });
+  /** A newer desktop backup: a copy of the previous one changed with SQL. */
+  const newer = (from: string, name: string, change: string) => {
+    const path = join(dir, name);
+    copyFileSync(from, path);
+    const file = new DatabaseSync(path);
+    file.exec(change);
+    file.close();
+    return path;
+  };
+  const delta = async (base: string, source: string) => {
+    const [b, s] = [LegacySource.open(base), LegacySource.open(source)];
+    try {
+      const dry = await runLegacyDelta(db, b, s, template, "mapping", { mode: "dry-run", actor });
+      if (dry.status !== "dry-run") return dry;
+      return await runLegacyDelta(db, b, s, template, "mapping", { mode: "import", actor, approval: approve(dry) });
+    } finally { b.close(); s.close(); }
+  };
+  const jv1 = async (companyId: string) => (await db.execute<{ debit: string }>(sql`SELECT max(l.debit)::text AS debit FROM effective_vouchers e
+    JOIN journal_lines l ON l.company_id=e.company_id AND l.voucher_id=e.id WHERE e.company_id=${companyId} AND e.number='JV-1'`)).rows[0].debit;
+
+  it("adds new desktop entries, revises edited vouchers repeatedly and refuses a stale base", async () => {
+    const token = randomUUID();
+    const first = join(dir, `first-${token}.db`);
+    buildLegacySqlite(first, "clean", token);
+    const source = LegacySource.open(first);
+    const dry = await runLegacyImport(db, source, template, "mapping", { mode: "dry-run", actor });
+    const imported = await runLegacyImport(db, source, template, "mapping", { mode: "import", actor, approval: approve(dry) });
+    source.close();
+    expect(imported.status, JSON.stringify(imported.reasons)).toBe("committed");
+    const [company] = await db.select().from(schema.companies).where(eq(schema.companies.name, `Legacy Clean Co ${token}`));
+
+    const second = newer(first, `second-${token}.db`, `
+      UPDATE voucher_lines SET debit=6000 WHERE id=1; UPDATE voucher_lines SET credit=6000 WHERE id=2;
+      INSERT INTO vouchers VALUES (11,1,'JV-20250710-0011','2025-07-10','JV','Office tea');
+      INSERT INTO voucher_lines VALUES (31,11,8,NULL,120,0,''),(32,11,1,NULL,0,120,'');`);
+    const merged = await delta(first, second);
+    expect(merged.status, JSON.stringify(merged.reasons)).toBe("committed");
+    expect(merged.report.outcome).toMatchObject({ voucher: { imported: 1 }, voucher_revision: { imported: 1 } });
+    expect(merged.report.verification.unexplained).toBe(0);
+    expect(await jv1(company.id)).toBe("6000.00");
+
+    // The same voucher edited again in the next backup revises the already revised voucher.
+    const third = newer(second, `third-${token}.db`, "UPDATE voucher_lines SET debit=7000 WHERE id=1; UPDATE voucher_lines SET credit=7000 WHERE id=2;");
+    const again = await delta(second, third);
+    expect(again.status, JSON.stringify(again.reasons)).toBe("committed");
+    expect(await jv1(company.id)).toBe("7000.00");
+    const [sequence] = await db.select().from(schema.documentSequences)
+      .where(and(eq(schema.documentSequences.companyId, company.id), eq(schema.documentSequences.kind, "JV")));
+    expect(sequence.lastValue).toBe(11);
+
+    // Only the most recently merged backup is a valid base.
+    const fourth = newer(third, `fourth-${token}.db`, "UPDATE vouchers SET narration='x' WHERE id=99;");
+    const stale = await delta(second, fourth);
+    expect(stale.status).toBe("fatal");
+    expect(stale.report.issues.map((i) => i.code)).toContain("base-not-imported");
   });
 });

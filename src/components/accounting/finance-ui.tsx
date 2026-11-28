@@ -1,14 +1,15 @@
 import Link from "next/link";
-import { CalendarDays, Filter } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, CalendarDays, Filter, Scale } from "lucide-react";
 import { Button } from "../ui/button";
 import { formatMoney } from "@/lib/display";
 import { first, resolveRange, type Query } from "@/lib/range";
 import { displayDate } from "@/lib/validation";
 import { Exact } from "@/lib/engine/model";
 import type { readLedger } from "@/lib/engine/read";
+import { AccTable, SidedFigure, StatCard, voucherTypes } from "./acc-ui";
 
-export function PageHeading({ title, company, toolbar }: { title: string; company: string; toolbar?: React.ReactNode }) {
-  return <div className="page-heading"><div><p className="eyebrow">{company}</p><h1>{title}</h1></div>
+export function PageHeading({ title, company, toolbar, subtitle }: { title: string; company: string; toolbar?: React.ReactNode; subtitle?: React.ReactNode }) {
+  return <div className="page-heading"><div><p className="eyebrow">{company}</p><h1>{title}</h1>{subtitle && <p className="acc-subtitle">{subtitle}</p>}</div>
     {toolbar && <div className="finance-toolbar print-hide">{toolbar}</div>}
   </div>;
 }
@@ -51,19 +52,30 @@ export function Money({ value }: { value: string }) {
 }
 
 export function Ledger({ result, base, from, to }: { result: Awaited<ReturnType<typeof readLedger>>; base: string; from: string; to: string }) {
+  const sum = (side: "debit" | "credit") => result.rows.reduce((total, row) => total.plus(row[side] ?? "0"), new Exact(0)).toFixed(2);
+  const zero = (value: string) => new Exact(value).isZero();
   return <>
-    <div className="stats-grid">
-      <div className="panel stat"><span className="muted">Opening balance (PKR)</span><strong>{sided(result.opening)}</strong></div>
-      <div className="panel stat"><span className="muted">Closing balance (PKR)</span><strong>{sided(result.closing)}</strong></div>
-      <div className="panel stat"><span className="muted">Reporting period</span><strong className="text-xl">{displayDate(from)} to {displayDate(to)}</strong></div>
-    </div>
-    <PanelTable title="Posted ledger" headers={["Date","Voucher","Type","Reference","Account","Narration","Debit (PKR)","Credit (PKR)","Running balance"]}
+    <section className="stat-row acc-stat-row" aria-label="Ledger balances">
+      <StatCard icon={<ArrowDownToLine size={20} />} tone="slate" title="Opening balance (PKR)" subtitle={`Brought forward to ${displayDate(from)}`}
+        value={<SidedFigure value={sided(result.opening)} />} />
+      <StatCard icon={<Scale size={20} />} tone="blue" title="Reporting period" subtitle={`${displayDate(from)} to ${displayDate(to)}`}
+        value={<>{result.rows.length}<small className="acc-unit"> {result.rows.length === 1 ? "entry" : "entries"}</small></>}
+        note={<>Debits PKR {formatMoney(sum("debit"))} · Credits PKR {formatMoney(sum("credit"))}</>} />
+      <StatCard icon={<ArrowUpFromLine size={20} />} tone="green" title="Closing balance (PKR)" subtitle={`Carried forward at ${displayDate(to)}`}
+        value={<SidedFigure value={sided(result.closing)} />} />
+    </section>
+    <AccTable title="Posted ledger" subtitle="Running balance in PKR, oldest entry first"
+      headers={["Date","Voucher","Account","Narration / Reference",{ label: "Debit (PKR)", num: true },{ label: "Credit (PKR)", num: true },{ label: "Running balance", num: true }]}
       empty={result.rows.length ? undefined : "No posted entries in this period"}>
       {result.rows.map((row) => <tr key={row.id}>
-        <td>{displayDate(row.date!)}</td><td><Link className="text-link" href={`${base}/vouchers/${row.documentId}`}>{row.number}</Link></td>
-        <td>{row.type}</td><td>{row.reference || "—"}</td><td>{row.code} · {row.account}</td><td>{row.narration}</td>
-        <Money value={row.debit!} /><Money value={row.credit!} /><td className="money-cell">{sided(row.running!)}</td>
+        <td className="acc-nowrap">{displayDate(row.date!)}</td>
+        <td><Link className="acc-strong-link" href={`${base}/vouchers/${row.documentId}`}>{row.number}</Link><small>{voucherTypes[row.type!] ?? row.type}</small></td>
+        <td><span className="acc-code">{row.code}</span> {row.account}</td>
+        <td className="acc-narration"><span>{row.narration || "—"}</span>{row.reference && <small>Ref: {row.reference}</small>}</td>
+        <td className={`acc-num${zero(row.debit!) ? " acc-zero" : ""}`}>{formatMoney(row.debit!)}</td>
+        <td className={`acc-num${zero(row.credit!) ? " acc-zero" : ""}`}>{formatMoney(row.credit!)}</td>
+        <td className="acc-num acc-running">{sided(row.running!)}</td>
       </tr>)}
-    </PanelTable>
+    </AccTable>
   </>;
 }

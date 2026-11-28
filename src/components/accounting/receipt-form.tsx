@@ -17,7 +17,7 @@ export function ReceiptForm({ companyId, base, customers, accounts, executives, 
   const active = new Set(executives.map((entry) => entry.id));
   return <FinanceForm action={recordReceiptAction} companyId={companyId} successTo={`${base}/vouchers/{id}`}
     submit={[{ label: approval ? "Submit receipt for approval" : "Post receipt" }]}>
-    <div className="form-grid">
+    <div className="form-grid acc-form-grid acc-cols-3">
       <label className="field">Received date<input type="date" name="date" defaultValue={today} required /></label>
       <label className="field">Customer<select name="partyId" value={partyId} required onChange={(event) => {
         setPartyId(event.target.value);
@@ -34,9 +34,9 @@ export function ReceiptForm({ companyId, base, customers, accounts, executives, 
         <option value="">No sales executive</option>{executives.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
       </select></label>
       <label className="field">Reference<input name="reference" maxLength={120} /></label>
-      <label className="field field-wide">Narration<textarea name="narration" maxLength={1000} placeholder="Amount received · customer name" /></label>
+      <label className="field field-wide">Narration<textarea name="narration" rows={2} maxLength={1000} placeholder="Amount received · customer name" /></label>
     </div>
     {partyId && defaults[partyId] && executive === defaults[partyId] && !chosen &&
-      <p className="muted mt-3">Sales executive taken from this customer&apos;s most recent sale.</p>}
+      <p className="acc-note">Sales executive taken from this customer&apos;s most recent sale.</p>}
   </FinanceForm>;
 }

@@ -14,14 +14,14 @@ const columns: ColumnDef<Row>[] = [
 
 export function LedgerTable({ data }: { data: Row[] }) {
   const table = useReactTable({ data, columns, getCoreRowModel: getCoreRowModel(), getSortedRowModel: getSortedRowModel() });
-  return <div className="table-scroll">
-    <table>
+  if (!data.length) return <div className="table-empty acc-empty"><FileText size={22} aria-hidden /><strong>No posted vouchers in this period</strong><p>Posted entries appear here once they are recorded.</p></div>;
+  return <div className="table-scroll acc-sheet">
+    <table className="activity-table acc-table">
       <thead>{table.getHeaderGroups().map((group) => <tr key={group.id}>{group.headers.map((header) => <th key={header.id} scope="col"
         aria-sort={header.column.getIsSorted() === "asc" ? "ascending" : header.column.getIsSorted() === "desc" ? "descending" : "none"}>
-        <button type="button" onClick={header.column.getToggleSortingHandler()}>{flexRender(header.column.columnDef.header, header.getContext())}<ArrowDownUp size={13} /></button>
+        <button type="button" className="acc-sort" onClick={header.column.getToggleSortingHandler()}>{flexRender(header.column.columnDef.header, header.getContext())}<ArrowDownUp size={13} /></button>
       </th>)}</tr>)}</thead>
       <tbody>{table.getRowModel().rows.map((row) => <tr key={row.original.id}>{row.getVisibleCells().map((cell) => <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>)}</tr>)}</tbody>
     </table>
-    {!data.length && <div className="empty"><span className="empty-icon"><FileText size={24} /></span><strong>No posted vouchers in this period</strong><p>Posted entries appear here once they are recorded.</p></div>}
   </div>;
 }

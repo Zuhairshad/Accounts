@@ -33,5 +33,5 @@ export default async function AccountingDetail({ params, searchParams }: {
   else if (section === "party-ledger" && id !== "new") view = await LedgerDetail(screen, id, "party");
   else if (section === "allocations" && id !== "new") view = await PartySettlement(screen, id);
   else notFound();
-  return <div className="page-stack">{view}</div>;
+  return <div className="page-stack acc-page">{view}</div>;
 }

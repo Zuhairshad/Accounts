@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { FileText, Plus, Rows3, Trash2 } from "lucide-react";
 import { saveVoucherAction } from "@/lib/engine/actions";
 import { Exact, manualTypes, type EntryLine, type VoucherInput } from "@/lib/engine/model";
 import { formatMoney } from "@/lib/display";
@@ -46,6 +46,7 @@ export function VoucherEditor({ companyId, entry, options, id, version, isPosted
   }, new Exact(0));
   const dr = total("debit");
   const cr = total("credit");
+  const balanced = dr.eq(cr);
   const edit = (row: number, update: Partial<Line>) => setLines((current) => current.map((line) => line.row === row ? { ...line, ...update } : line));
   const add = (direction: "debit" | "credit") => setLines((current) => [
     ...current, { row: nextLine.current++, target: "", direction, amount: "", description: "" },
@@ -68,73 +69,97 @@ export function VoucherEditor({ companyId, entry, options, id, version, isPosted
     const row = lines.find((line) => line.direction === direction && !line.target);
     if (target && row) edit(row.row, { target });
   };
-  return <FinanceForm action={saveVoucherAction} companyId={companyId} id={id} version={version} successTo={`${base}/vouchers/{id}`}
+  return <FinanceForm action={saveVoucherAction} companyId={companyId} id={id} version={version} successTo={`${base}/vouchers/{id}`} className="acc-entry"
     submit={isPosted ? [{ label: "Post revised voucher", value: "post" }] : [
       { label: "Save draft", value: "draft", variant: "outline" },
       ...(approval ? [{ label: "Submit for approval", value: "submit" } as const] : canPost ? [{ label: "Post voucher", value: "post" } as const] : []),
     ]}>
     <input type="hidden" name="entry" value={JSON.stringify({ ...header, lines: payload })} />
-    <div className="form-grid">
-      <label className="field">Voucher type<select disabled={!!id} value={header.type} onChange={(event) => setType(event.target.value as VoucherInput["type"])}>
-        {manualTypes.map((type) => <option key={type}>{type}</option>)}
-      </select></label>
-      <label className="field">Accounting date<input type="date" value={header.date} onChange={(event) => setHeader({ ...header, date: event.target.value })} required /></label>
-      <label className="field">Reference<input value={header.reference} onChange={(event) => setHeader({ ...header, reference: event.target.value })} maxLength={120} /></label>
-      {!["JV", "VR"].includes(header.type) && <label className="field">Payment or receipt mode<select value={header.mode}
-        onChange={(event) => setHeader({ ...header, mode: event.target.value as VoucherInput["mode"] })}>
-        <option value="party">Customer or supplier</option><option value="direct">Direct account</option>
-      </select></label>}
-      <label className="field field-wide">Narration<textarea value={header.narration} onChange={(event) => setHeader({ ...header, narration: event.target.value })} maxLength={1000} /></label>
-    </div>
-    <div className="table-scroll mt-5">
-      <table className="entry-table"><thead><tr><th>Side</th><th>Account or party</th><th>Amount (PKR)</th><th>Line description</th><th aria-label="Remove line" /></tr></thead>
-        <tbody>{lines.map((line, index) => {
-          const chosen = selectors.get(line.target);
-          return <tr key={line.row}>
-            <td><select aria-label={`Side line ${index + 1}`} value={line.direction} onChange={(event) => edit(line.row, { direction: event.target.value as Line["direction"] })}>
-              <option value="debit">Debit</option><option value="credit">Credit</option>
-            </select></td>
-            <td>{(() => {
-              const query = finds[line.row] ?? "";
-              const visible = options.filter((option) => option.active && (option.key === line.target || matchesSearch(query, option.label)));
-              return <>
-                <input type="search" className="line-find" aria-label={`Find account or party line ${index + 1}`} placeholder="Type to search, Enter to choose"
-                  value={query} onChange={(event) => setFinds({ ...finds, [line.row]: event.target.value })}
-                  onKeyDown={(event) => {
-                    if (event.key !== "Enter") return;
-                    event.preventDefault();
-                    const match = visible.find((option) => option.key !== line.target) ?? visible[0];
-                    if (match) {
-                      edit(line.row, { target: match.key });
-                      setFinds({ ...finds, [line.row]: "" });
-                      event.currentTarget.closest("tr")?.querySelector<HTMLInputElement>("input[inputmode=decimal]")?.focus();
-                    }
-                  }} />
-                <select aria-label={`Account or party line ${index + 1}`} value={line.target} onChange={(event) => edit(line.row, { target: event.target.value })}>
-                  <option value="">{query && !visible.length ? "No match" : "Choose account or party"}</option>
-                  {chosen && !chosen.active && <option value={chosen.key}>{chosen.label} (inactive)</option>}
-                  <optgroup label="Accounts">{visible.filter((option) => !option.partyId).map((option) =>
-                    <option key={option.key} value={option.key}>{option.label}</option>)}</optgroup>
-                  <optgroup label="Customers and suppliers">{visible.filter((option) => option.partyId).map((option) =>
-                    <option key={option.key} value={option.key}>{option.label}</option>)}</optgroup>
-                </select></>;
-            })()}{chosen?.balance !== null && chosen?.balance !== undefined &&
-              <small className="muted block">Current party balance {balanceLabel(chosen.balance)}</small>}</td>
-            <td><input aria-label={`Amount line ${index + 1}`} inputMode="decimal" value={line.amount} maxLength={21}
-              onChange={(event) => edit(line.row, { amount: event.target.value })} /></td>
-            <td><input aria-label={`Description line ${index + 1}`} value={line.description} maxLength={250}
-              onChange={(event) => edit(line.row, { description: event.target.value })} /></td>
-            <td><button className="icon-button" type="button" title={`Remove line ${index + 1}`} onClick={() => setLines((current) => current.filter((candidate) => candidate.row !== line.row))}><Trash2 size={16} /></button></td>
-          </tr>;
-        })}</tbody>
-      </table>
-    </div>
-    <div className="finance-toolbar mt-4">
-      <Button type="button" variant="outline" disabled={lines.length >= 100} onClick={() => add("debit")}><Plus size={16} /> Add debit line</Button>
-      <Button type="button" variant="outline" disabled={lines.length >= 100} onClick={() => add("credit")}><Plus size={16} /> Add credit line</Button>
-      <span className={dr.eq(cr) ? "muted" : "form-error"} role="status">Debit {formatMoney(dr.toFixed(2))} · Credit {formatMoney(cr.toFixed(2))} · Difference {formatMoney(dr.minus(cr).toFixed(2))}</span>
-    </div>
-    {isPosted && <label className="field mt-5">Revision reason<input name="reason" required minLength={3} maxLength={500} /></label>}
+    <section className="panel acc-card">
+      <div className="acc-card-head"><span className="acc-card-icon" aria-hidden><FileText size={18} /></span>
+        <div className="acc-card-title"><h2>Voucher details</h2><p>Type, date and reference printed on the voucher</p></div></div>
+      <div className="form-grid acc-form-grid acc-cols-4">
+        <label className="field">Voucher type<select disabled={!!id} value={header.type} onChange={(event) => setType(event.target.value as VoucherInput["type"])}>
+          {manualTypes.map((type) => <option key={type}>{type}</option>)}
+        </select></label>
+        <label className="field">Accounting date<input type="date" value={header.date} onChange={(event) => setHeader({ ...header, date: event.target.value })} required /></label>
+        <label className="field">Reference<input value={header.reference} onChange={(event) => setHeader({ ...header, reference: event.target.value })} maxLength={120} /></label>
+        {!["JV", "VR"].includes(header.type) && <label className="field">Payment or receipt mode<select value={header.mode}
+          onChange={(event) => setHeader({ ...header, mode: event.target.value as VoucherInput["mode"] })}>
+          <option value="party">Customer or supplier</option><option value="direct">Direct account</option>
+        </select></label>}
+        <label className="field field-wide">Narration<textarea rows={2} value={header.narration} onChange={(event) => setHeader({ ...header, narration: event.target.value })} maxLength={1000} /></label>
+      </div>
+    </section>
+    <section className="panel acc-card acc-lines-card">
+      <div className="acc-card-head"><span className="acc-card-icon" aria-hidden><Rows3 size={18} /></span>
+        <div className="acc-card-title"><h2>Journal lines</h2><p>Type to search an account or party and press Enter. Enter in a cell moves to the next one.</p></div>
+        <div className="acc-card-actions"><span className="pill">{lines.length} {lines.length === 1 ? "line" : "lines"}</span></div></div>
+      <div className="table-scroll acc-sheet">
+        <table className="entry-table acc-grid acc-voucher-grid"><thead><tr><th className="acc-grid-no" scope="col">#</th><th scope="col">Side</th><th scope="col">Account or party</th>
+          <th scope="col" className="acc-num">Debit (PKR)</th><th scope="col" className="acc-num">Credit (PKR)</th><th scope="col">Line description</th><th aria-label="Remove line" /></tr></thead>
+          <tbody>{lines.map((line, index) => {
+            const chosen = selectors.get(line.target);
+            const amount = <input className="acc-amount" aria-label={`Amount line ${index + 1}`} inputMode="decimal" value={line.amount} maxLength={21} placeholder="0.00"
+              onChange={(event) => edit(line.row, { amount: event.target.value })} />;
+            return <tr key={line.row} className={line.direction === "debit" ? "acc-line-dr" : "acc-line-cr"}>
+              <td className="acc-grid-no">{index + 1}</td>
+              <td><select className="acc-side" aria-label={`Side line ${index + 1}`} value={line.direction} onChange={(event) => edit(line.row, { direction: event.target.value as Line["direction"] })}>
+                <option value="debit">Debit</option><option value="credit">Credit</option>
+              </select></td>
+              <td className="acc-grid-account">{(() => {
+                const query = finds[line.row] ?? "";
+                const visible = options.filter((option) => option.active && (option.key === line.target || matchesSearch(query, option.label)));
+                return <>
+                  <input type="search" className="line-find" aria-label={`Find account or party line ${index + 1}`} placeholder="Type to search, Enter to choose"
+                    value={query} onChange={(event) => setFinds({ ...finds, [line.row]: event.target.value })}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter") return;
+                      event.preventDefault();
+                      const match = visible.find((option) => option.key !== line.target) ?? visible[0];
+                      if (match) {
+                        edit(line.row, { target: match.key });
+                        setFinds({ ...finds, [line.row]: "" });
+                        event.currentTarget.closest("tr")?.querySelector<HTMLInputElement>("input[inputmode=decimal]")?.focus();
+                      }
+                    }} />
+                  <select aria-label={`Account or party line ${index + 1}`} value={line.target} onChange={(event) => edit(line.row, { target: event.target.value })}>
+                    <option value="">{query && !visible.length ? "No match" : "Choose account or party"}</option>
+                    {chosen && !chosen.active && <option value={chosen.key}>{chosen.label} (inactive)</option>}
+                    <optgroup label="Accounts">{visible.filter((option) => !option.partyId).map((option) =>
+                      <option key={option.key} value={option.key}>{option.label}</option>)}</optgroup>
+                    <optgroup label="Customers and suppliers">{visible.filter((option) => option.partyId).map((option) =>
+                      <option key={option.key} value={option.key}>{option.label}</option>)}</optgroup>
+                  </select></>;
+              })()}{chosen?.balance !== null && chosen?.balance !== undefined &&
+                <small className="acc-line-balance">Current party balance {balanceLabel(chosen.balance)}</small>}</td>
+              <td className="acc-num acc-grid-amount">{line.direction === "debit" ? amount : <span className="acc-grid-blank" aria-hidden>—</span>}</td>
+              <td className="acc-num acc-grid-amount">{line.direction === "credit" ? amount : <span className="acc-grid-blank" aria-hidden>—</span>}</td>
+              <td><input aria-label={`Description line ${index + 1}`} value={line.description} maxLength={250}
+                onChange={(event) => edit(line.row, { description: event.target.value })} /></td>
+              <td><button className="icon-button acc-remove" type="button" title={`Remove line ${index + 1}`} onClick={() => setLines((current) => current.filter((candidate) => candidate.row !== line.row))}><Trash2 size={16} /></button></td>
+            </tr>;
+          })}</tbody>
+          <tfoot><tr className="acc-total-row">
+            <td colSpan={3}><strong>Totals</strong></td>
+            <td className="acc-num"><strong>{formatMoney(dr.toFixed(2))}</strong></td><td className="acc-num"><strong>{formatMoney(cr.toFixed(2))}</strong></td>
+            <td colSpan={2}><span role="status" className={`status ${balanced ? dr.isZero() ? "acc-status-neutral" : "status-posted" : "acc-status-void"}`}>
+              <span className="sr-only">Debit {formatMoney(dr.toFixed(2))} · Credit {formatMoney(cr.toFixed(2))} · </span>
+              {balanced ? dr.isZero() ? "No amounts yet" : "Balanced" : <>Difference {formatMoney(dr.minus(cr).toFixed(2))}</>}</span></td>
+          </tr></tfoot>
+        </table>
+      </div>
+      <div className="acc-grid-footer">
+        <Button type="button" variant="outline" className="button-small" disabled={lines.length >= 100} onClick={() => add("debit")}><Plus size={15} /> Add debit line</Button>
+        <Button type="button" variant="outline" className="button-small" disabled={lines.length >= 100} onClick={() => add("credit")}><Plus size={15} /> Add credit line</Button>
+        <dl className="acc-balance">
+          <div><dt>Total debit</dt><dd>{formatMoney(dr.toFixed(2))}</dd></div>
+          <div><dt>Total credit</dt><dd>{formatMoney(cr.toFixed(2))}</dd></div>
+          <div className={balanced ? "acc-balance-ok" : "acc-balance-off"}><dt>Difference</dt><dd>{formatMoney(dr.minus(cr).toFixed(2))}</dd></div>
+        </dl>
+      </div>
+      {isPosted && <label className="field acc-reason">Revision reason<input name="reason" required minLength={3} maxLength={500} /></label>}
+    </section>
     {!isPosted && <input type="hidden" name="reason" value="" />}
   </FinanceForm>;
 }

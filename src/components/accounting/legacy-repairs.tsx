@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { DateFilters, PageHeading, PanelTable } from "./finance-ui";
+import { PageHeading } from "./finance-ui";
+import { AccFilters, AccTable } from "./acc-ui";
 import type { Screen } from "./index-views";
 import { first, resolveRange } from "@/lib/range";
 import { displayDate } from "@/lib/validation";
@@ -21,12 +22,14 @@ export async function LegacyRepairs({ companyId, companyName, base, query }: Scr
     GROUP BY v.id,v.number,v.accounting_date,v.narration ORDER BY v.accounting_date DESC,v.number LIMIT 100
   `);
   return <>
-    <PageHeading title="Link existing party vouchers" company={companyName} />
-    <DateFilters query={query} withSearch dateLabel="Original voucher date" />
-    <PanelTable title="Unlinked control-account vouchers" headers={["Date","Voucher","Narration","Unlinked lines"]}
+    <PageHeading title="Link existing party vouchers" company={companyName} subtitle="Older vouchers whose receivable or payable lines have no party yet" />
+    <AccFilters query={query} withSearch dateLabel="Original voucher date" />
+    <AccTable title="Unlinked control-account vouchers" subtitle="Open a voucher to confirm the party for each line"
+      headers={["Voucher","Date","Narration",{ label: "Unlinked lines", num: true }]}
       empty={!rows.rows.length ? "No unlinked vouchers match your filters" : undefined}>
-      {rows.rows.map((row) => <tr key={row.id}><td>{displayDate(row.date)}</td><td><Link className="text-link" href={`${base}/vouchers/${row.id}`}>{row.number}</Link></td>
-        <td>{row.narration}</td><td>{row.count}</td></tr>)}
-    </PanelTable>
+      {rows.rows.map((row) => <tr key={row.id}><td><Link className="acc-strong-link" href={`${base}/vouchers/${row.id}`}>{row.number}</Link></td>
+        <td className="acc-nowrap">{displayDate(row.date)}</td><td className="acc-narration"><span>{row.narration || "—"}</span></td>
+        <td className="acc-num"><span className="status acc-status-draft">{row.count}</span></td></tr>)}
+    </AccTable>
   </>;
 }

@@ -23,7 +23,7 @@ export function AdjustmentEditor({ companyId, base, id, version, today, canAppro
   return <FinanceForm action={adjustmentAction} companyId={companyId} id={id} version={version} successTo={`${base}/adjustments/{id}`}
     submit={[{ label: fixed ? "Post revised adjustment" : "Post adjustment" }]}>
     {fixed && <><input type="hidden" name="itemId" value={item} /><input type="hidden" name="kind" value={kind} /></>}
-    <div className="form-grid">
+    <div className="form-grid trade-form-grid">
       <label className="field">Item<select name={fixed ? undefined : "itemId"} value={item} required disabled={fixed}
         onChange={(event) => setItem(event.target.value)}><option value="">Choose stock item</option>{options.map((option) => <option value={option.id} key={option.id}>{option.name}</option>)}
       </select></label>
@@ -39,7 +39,7 @@ export function AdjustmentEditor({ companyId, base, id, version, today, canAppro
       {kind === "valuation" && <label className="field">Signed change in value (PKR)<input name="valueChange" inputMode="decimal" defaultValue={input?.valueChange} required /></label>}
       <label className="field field-wide">Reason<textarea name="reason" defaultValue={input?.reason} required minLength={3} maxLength={500} /></label>
     </div>
-    {selected && <p className="muted mt-3">System quantity today {new Exact(selected.qty).toString()} {selected.unit}.
+    {selected && <p className="trade-hint mt-3">System quantity today {new Exact(selected.qty).toString()} {selected.unit}.
       {difference !== undefined ? ` Difference ${difference} ${selected.unit}.` : date !== today ? " The posting checks the quantity at the accounting date." : ""}</p>}
   </FinanceForm>;
 }

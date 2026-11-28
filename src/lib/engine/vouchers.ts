@@ -75,7 +75,8 @@ async function adoptLegacy(tx: Transaction, context: FinanceContext, id: string)
     draft: { entry: { ...source, lines: previous.lines } },
   }).returning();
   await tx.insert(voucherVersions).values({ companyId, documentId: doc.id, voucherId: id });
-  const [adopted] = await tx.update(voucherDocuments).set({ currentVoucherId: id, draft: null, status: "posted" })
+  // A new version: the append-only posting timeline already holds the inserted draft version.
+  const [adopted] = await tx.update(voucherDocuments).set({ currentVoucherId: id, draft: null, status: "posted", version: sql`${voucherDocuments.version} + 1` })
     .where(eq(voucherDocuments.id, id)).returning();
   return adopted;
 }

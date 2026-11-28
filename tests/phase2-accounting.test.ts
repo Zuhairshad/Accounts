@@ -237,6 +237,36 @@ describe.skipIf(!url)("phase two accounting engine", () => {
     await expect(locked((tx) => repairLegacyParty(tx, context, { voucherId: id, reason: "Repeat should fail", links: [{ lineNumber: 4, partyId: customerId }] }))).rejects.toThrow(/already belongs/);
   });
 
+  it("revises and deletes imported legacy vouchers with an append-only posting timeline", async () => {
+    const legacy = async (number: string) => {
+      const id = randomUUID();
+      await locked(async (tx) => {
+        const period = await openPeriod(tx, companyId, paymentDate);
+        await tx.insert(schema.vouchers).values({ id, companyId, periodId: period.id, date: paymentDate, type: "JV", createdBy: actorId });
+        await tx.insert(schema.journalLines).values([
+          { ...line("cash", "debit", "15000"), companyId, voucherId: id, lineNo: 1 },
+          { ...line("opening_equity", "credit", "15000"), companyId, voucherId: id, lineNo: 2 },
+        ]);
+        await tx.update(schema.vouchers).set({ status: "posted", number, postedAt: new Date() }).where(eq(schema.vouchers.id, id));
+      });
+      return id;
+    };
+    const revisedId = await legacy(`LEGACY-REVISE-${randomUUID()}`);
+    await locked((tx) => saveManual(tx, context, {
+      entry: entry("JV", [line("cash", "debit", "98085"), line("opening_equity", "credit", "98085")]),
+      id: revisedId, version: 0, intent: "post", reason: "Corrected in the desktop application",
+    }));
+    const revised = (await readVoucher(db, companyId, revisedId))!;
+    expect(revised.status).toBe("posted");
+    expect(revised.postedLines.map((row) => row.debit)).toContain("98085.00");
+    const versions = await db.select().from(schema.voucherTimeline).where(eq(schema.voucherTimeline.documentId, revisedId));
+    expect(versions.map((row) => row.status)).toEqual(expect.arrayContaining(["draft", "posted"]));
+
+    const deletedId = await legacy(`LEGACY-DELETE-${randomUUID()}`);
+    await locked((tx) => changeVoucher(tx, context, { id: deletedId, version: 0, operation: "delete", reason: "Entered twice" }));
+    expect((await readVoucher(db, companyId, deletedId))?.status).toBe("void");
+  });
+
   it("rejects a generated voucher when its originating invoice or adjustment is missing", async () => {
     const missingId = randomUUID();
     await expect(locked((tx) => postOriginVoucher(tx, context, { kind: "invoice", id: missingId }, {

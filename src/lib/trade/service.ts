@@ -351,7 +351,9 @@ async function normalizeAdjustment(tx: Transaction, context: FinanceContext, inp
       SELECT EXISTS(SELECT 1 FROM stock_movements m JOIN effective_vouchers v ON v.company_id=m.company_id AND v.id=m.voucher_id
         LEFT JOIN inventory_adjustments a ON a.company_id=m.company_id AND a.voucher_id=m.voucher_id
         WHERE m.company_id=${companyId} AND m.item_id=${input.itemId}
-          AND ((m.movement_kind IN ('legacy','opening') AND a.payload IS NULL) OR (a.kind='opening' AND a.id IS DISTINCT FROM ${existing?.id ?? null}::uuid))) AS exists
+          -- Imported history: any movement not created by an application invoice or adjustment (imported sales and purchases too).
+          AND ((a.payload IS NULL AND NOT EXISTS(SELECT 1 FROM invoices i WHERE i.company_id=m.company_id AND i.voucher_id=m.voucher_id AND i.payload IS NOT NULL))
+            OR (a.kind='opening' AND a.id IS DISTINCT FROM ${existing?.id ?? null}::uuid))) AS exists
     `);
     if (imported.rows[0].exists) throw new AccountingError("This item already has an opening or imported stock history. Use an opening correction after reconciliation.");
   }

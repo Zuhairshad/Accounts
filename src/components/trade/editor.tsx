@@ -247,7 +247,7 @@ export function ItemFields({ companyId, options, base, item, inline = false, can
   return <FinanceForm action={itemAction} companyId={companyId} id={item?.id} version={item?.version ?? 0}
     submit={[{ label: item ? "Save item" : "Add item" }]} successTo={!inline && !item ? `${base}/inventory/{id}` : undefined}>
     <div className="form-grid trade-form-grid mt-4">
-      <label className="field">Item code or SKU<input name="sku" defaultValue={item?.sku ?? ""} required maxLength={80} /></label>
+      <label className="field">Item code or SKU (optional)<input name="sku" defaultValue={item?.sku ?? ""} maxLength={80} /></label>
       <label className="field">Item name<input name="name" defaultValue={item?.name} required maxLength={160} /></label>
       <label className="field">Item type<select name="kind" value={kind} onChange={(event) => setKind(event.target.value)}>
         <option value="stock">Stock product</option><option value="service">Service</option></select></label>

@@ -7,7 +7,7 @@ import { FinanceForm } from "./finance-form";
 
 type Account = typeof accounts.$inferSelect;
 type Party = typeof parties.$inferSelect;
-export type Opening = { date: string; direction: "debit" | "credit"; amount: string; version: number };
+export type Opening = { id: string; date: string; direction: "debit" | "credit"; amount: string; version: number; imported: string | null };
 
 export function AccountForm({ companyId, account, heads, base }: { companyId: string; account?: Account; heads: Account[]; base: string }) {
   const [type, setType] = useState<Account["type"]>(account?.type ?? "asset");
@@ -70,7 +70,9 @@ export function PartyForm({ companyId, party, opening, today, canPost, base }: {
     <div className="acc-form-section acc-opening">
       <div className="acc-opening-head"><h2>Opening balance</h2>
         {opening && <p className="status acc-status-neutral">PKR {opening.amount} {opening.direction === "debit" ? "Dr" : "Cr"}</p>}</div>
-      {canPost && <label className="acc-check"><input type="checkbox" name="saveOpening" value="true" checked={showOpening}
+      {opening?.imported && <p className="muted">Imported from the desktop application as voucher{" "}
+        <a href={`${base}/vouchers/${opening.id}`}>{opening.imported}</a>. Revise that voucher to change it.</p>}
+      {canPost && !opening?.imported && <label className="acc-check"><input type="checkbox" name="saveOpening" value="true" checked={showOpening}
         onChange={(event) => setShowOpening(event.target.checked)} /> Save opening balance with party</label>}
       {showOpening && <div className="form-grid acc-form-grid acc-cols-4">
         <input name="openingVersion" type="hidden" value={opening?.version ?? 0} />

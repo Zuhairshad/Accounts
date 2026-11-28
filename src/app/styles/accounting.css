@@ -177,7 +177,7 @@
 .acc-grid td.acc-grid-no { padding-top: .85rem; }
 .acc-voucher-grid { min-width: 62rem; table-layout: fixed; }
 .acc-voucher-grid th:nth-child(1) { width: 2.6rem; }
-.acc-voucher-grid th:nth-child(2) { width: 7.25rem; }
+.acc-voucher-grid th:nth-child(2) { width: 8.5rem; }
 .acc-voucher-grid th:nth-child(4), .acc-voucher-grid th:nth-child(5) { width: 9.5rem; }
 .acc-voucher-grid th:nth-child(6) { width: 26%; }
 .acc-voucher-grid th:nth-child(7) { width: 3rem; }

@@ -78,7 +78,13 @@ test("posts and reopens receivables through the browser, exports PDF, and enforc
   await page.getByRole("combobox", { name: "Voucher type" }).selectOption("CRV");
   await page.getByLabel("Accounting date").fill(today);
   await page.getByLabel("Reference").fill("BROWSER-RECEIPT");
-  await page.getByRole("combobox", { name: "Account or party line 2" }).selectOption({ label: "Receivables browser customer · customer" });
+  // A cash receipt debits a cash account and credits a customer: other choices are not offered.
+  await expect(page.getByRole("combobox", { name: "Account or party line 1" })).toHaveValue(/Cash/);
+  await expect(page.getByRole("combobox", { name: "Side line 2" }).locator("option:checked")).toHaveText("Received from");
+  await page.getByRole("combobox", { name: "Account or party line 2" }).fill("sales");
+  await expect(page.getByText("No customer matches")).toBeVisible();
+  await page.getByRole("combobox", { name: "Account or party line 2" }).fill("browser cust");
+  await page.getByRole("option", { name: /Receivables browser customer · customer/ }).click();
   await page.getByLabel("Amount line 1").fill("4000");
   await page.getByLabel("Amount line 2").fill("4000");
   await page.getByRole("button", { name: "Post voucher", exact: true }).click();

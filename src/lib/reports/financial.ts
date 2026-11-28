@@ -57,21 +57,23 @@ export const accountTypes = ["asset","liability","equity","income","expense"] as
 export const typeName = (type: string) => type.charAt(0).toUpperCase() + type.slice(1);
 
 /** Each company lists its account types once, as collapsible headings carrying the type subtotal, with the accounts beneath. */
-export function companyWise(names: Named[], source: AccountMovement[], f: ReportFilter): Parts {
+/** `all` includes hidden opening-only accounts so subtotals and totals still balance. */
+export function companyWise(names: Named[], source: AccountMovement[], f: ReportFilter, all = source): Parts {
   const columns = ["Account Code","Account Type","Account Head",...moneyColumns];
   const rows = names.flatMap((name): ReportRow[] => {
     const part = source.filter((row) => row.companyId === name.id);
+    const everything = all.filter((row) => row.companyId === name.id);
     const groups = accountTypes.flatMap((type): ReportRow[] => {
       const accounts = part.filter((row) => row.type === type);
       if (!accounts.length) return [];
       const key = `${name.id}-${type}`;
-      return [{ key,style:"group",toggle:key,cells:[textCell(""),textCell(typeName(type)),textCell(""),...totals(accounts)] },
+      return [{ key,style:"group",toggle:key,cells:[textCell(""),textCell(typeName(type)),textCell(""),...totals(everything.filter((row) => row.type === type))] },
         ...accounts.map((row): ReportRow => ({ key:row.id,parent:key,
           cells:[textCell(row.code),textCell(""),textCell(row.name,reportLinks(row,f).period),...six(row,f)] }))];
     });
     return [{ key:name.id,style:"section",cells:[textCell(""),textCell(name.name),textCell("")] },...groups,
-      { key:`${name.id}-total`,style:"total",cells:[textCell(""),textCell(`${name.name} subtotal`),textCell(""),...totals(part)] }];
-  }).concat({ key:"grand",style:"total",cells:[textCell(""),textCell("Overall total"),textCell(""),...totals(source)] });
+      { key:`${name.id}-total`,style:"total",cells:[textCell(""),textCell(`${name.name} subtotal`),textCell(""),...totals(everything)] }];
+  }).concat({ key:"grand",style:"total",cells:[textCell(""),textCell("Overall total"),textCell(""),...totals(all)] });
   return { columns, rows, notes:[
     "Each account type appears once per company with its subtotal. Select a type on screen to collapse or expand its accounts.",
     "This aggregate includes the authorized companies shown above. Intercompany entries remain in the totals.",
@@ -79,15 +81,18 @@ export function companyWise(names: Named[], source: AccountMovement[], f: Report
 }
 
 export async function summaryReport(db: Reader, names: Named[], f: ReportFilter, mode: "mis" | "company-wise" | "combined-heads") : Promise<Parts> {
-  const source = (await movements(db,names.map((n) => n.id),f)).filter((row) => nonzero(row,f.includeOpening));
+  const all = (await movements(db,names.map((n) => n.id),f)).filter((row) => nonzero(row,true));
+  const source = all.filter((row) => nonzero(row,f.includeOpening));
+  const hidden = all.length - source.length;
+  const hiddenNote = hidden ? [`Totals include ${hidden} account${hidden === 1 ? "" : "s"} with only an opening balance, not listed. Choose Opening-only accounts: Yes to list them.`] : [];
   const columns = ["Account Code","Account Head","Account Type",...moneyColumns];
   const rowFor = (row: AccountMovement): ReportRow => ({
     key: row.id, cells: [textCell(row.code),textCell(row.name,reportLinks(row,f).period),textCell(row.type),...six(row,f)],
   });
-  if (mode === "mis") return { columns, rows: source.length ? [...source.map(rowFor),{ key:"total",style:"total",cells:[textCell("Total"),textCell(""),textCell(""),...totals(source)] }] : [], notes: [
-    "Opening and closing are net account balances shown on their debit or credit side. Period columns show posted movements.",
+  if (mode === "mis") return { columns, rows: source.length ? [...source.map(rowFor),{ key:"total",style:"total",cells:[textCell("Total"),textCell(""),textCell(""),...totals(all)] }] : [], notes: [
+    "Opening and closing are net account balances shown on their debit or credit side. Period columns show posted movements.", ...hiddenNote,
   ] };
-  if (mode === "company-wise") return companyWise(names,source,f);
+  if (mode === "company-wise") { const parts = companyWise(names,source,f,all); return { ...parts, notes:[...parts.notes,...hiddenNote] }; }
   const groups = new Map<string, AccountMovement[]>();
   for (const row of source) {
     const key = row.group ? `mapping:${row.group}:${row.type}` : row.control ? `system:${row.control}:${row.type}` : `unmapped:${row.companyId}:${row.id}`;
@@ -110,8 +115,8 @@ export async function summaryReport(db: Reader, names: Named[], f: ReportFilter,
       return row;
     }));
   }
-  if (source.length) rows.push({ key:"grand",style:"total",cells:[textCell(""),textCell("Overall total"),textCell(""),...totals(combinedRows)] });
-  return { columns, rows, notes:["Permanent system accounts and matching explicit mappings aggregate by classification. Unmapped accounts remain company-specific. Intercompany entries remain in the totals."] };
+  if (source.length) rows.push({ key:"grand",style:"total",cells:[textCell(""),textCell("Overall total"),textCell(""),...totals(all)] });
+  return { columns, rows, notes:["Permanent system accounts and matching explicit mappings aggregate by classification. Unmapped accounts remain company-specific. Intercompany entries remain in the totals.", ...hiddenNote] };
 }
 
 export async function trialBalance(db: Reader, id: string, f: ReportFilter): Promise<Parts> {

@@ -5,6 +5,7 @@ import { accounts, auditLogs, companySettings, deletedRecords, journalLines, ope
 import { AccountingError, Exact, accountDate, amount, reasonText } from "./model";
 import { approvalRequired, getDocument, publishDocument, recordChange, type FinanceContext } from "./vouchers";
 import { journalSnapshot, openPeriod } from "./posting";
+import { importedOpenings } from "./read";
 
 export const openingSchema = z.object({
   kind: z.enum(["party", "account"]), targetId: z.uuid(), date: accountDate,
@@ -122,6 +123,8 @@ export async function saveOpening(tx: Transaction, context: FinanceContext, inpu
       .where(and(eq(openingBalances.companyId, companyId), input.kind === "party"
         ? eq(journalLines.partyId, input.targetId) : and(eq(journalLines.accountId, input.targetId), sql`${journalLines.partyId} is null`))).limit(1);
     if (prior) throw new AccountingError("An imported opening posting already exists. Reconcile its source mapping before editing.");
+    const legacy = (await importedOpenings(tx, companyId)).find((row) => row.targetId === input.targetId);
+    if (legacy) throw new AccountingError(`The opening balance imported from the desktop application is voucher ${legacy.imported}. Revise that voucher instead of entering a second opening.`);
   }
   if (doc?.currentVoucherId) {
     const prior = await journalSnapshot(tx, companyId, doc.currentVoucherId);
@@ -145,8 +148,8 @@ export async function saveOpening(tx: Transaction, context: FinanceContext, inpu
   if (input.kind === "party" && !party?.active) throw new AccountingError("Choose an active party.");
   const [account] = await tx.select().from(accounts).where(and(eq(accounts.companyId, companyId),
     party ? eq(accounts.control, party.type === "customer" ? "receivable" : "payable") : eq(accounts.id, input.targetId)));
-  if (!account?.active || account.id === offset.id || (!party && ["receivable", "payable"].includes(account.control ?? ""))) {
-    throw new AccountingError("Use an active non-offset account or enter control balances through their parties.");
+  if (!account?.active || account.id === offset.id || (!party && ["receivable", "payable", "inventory"].includes(account.control ?? ""))) {
+    throw new AccountingError("Use an active non-offset account. Enter receivables and payables through their parties and stock through item opening stock.");
   }
   const direction = input.direction === "debit";
   const amount = value.toFixed(2);

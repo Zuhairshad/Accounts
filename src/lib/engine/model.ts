@@ -25,5 +25,25 @@ export type JournalInput = Omit<VoucherInput, "type" | "mode"> & {
   type: VoucherInput["type"] | "opening" | "sale" | "purchase" | "sale_return" | "purchase_return" | "adjustment" | "reversal";
 };
 export type DraftSnapshot = { entry: VoucherInput };
+
+/** What a manual voucher line may use, mirroring validateManual: the entry form offers only these choices. */
+export type LineChoice = { partyId: string | null; partyType?: "customer" | "supplier" | null; liquidity: string | null };
+export function voucherSides(type: VoucherInput["type"]) {
+  if (type === "JV" || type === "VR") return null;
+  const receipt = type.endsWith("RV");
+  return {
+    receipt, liquidity: type.startsWith("C") ? "cash" as const : "bank" as const,
+    /** The side that must use the cash or bank account. */
+    settlement: receipt ? "debit" as const : "credit" as const,
+    labels: receipt ? { debit: "Received in", credit: "Received from" } : { debit: "Paid to", credit: "Paid from" },
+  };
+}
+export function lineAllows(type: VoucherInput["type"], mode: VoucherInput["mode"], direction: "debit" | "credit", choice: LineChoice) {
+  const sides = voucherSides(type);
+  if (!sides) return true;
+  if (direction === sides.settlement) return !choice.partyId && choice.liquidity === sides.liquidity;
+  if (mode === "party") return !!choice.partyId && choice.partyType === (sides.receipt ? "customer" : "supplier");
+  return !choice.partyId;
+}
 export type Transition = "submit" | "post" | "delete" | "restore";
 export class AccountingError extends Error {}

@@ -32,6 +32,7 @@ export function effective(ids: string[], cutoff?: string) {
     WHERE v.company_id IN (${companies}) AND v.status='posted' AND v.posted_at<=${cutoff}::timestamptz
       AND (w.voucher_id IS NULL OR (w.document_id=v.id AND NOT EXISTS(
         SELECT 1 FROM voucher_timeline x WHERE x.company_id=v.company_id AND x.document_id=w.document_id AND x.recorded_at<=${cutoff}::timestamptz
+          AND x.status<>'draft' -- adopting an imported voucher records a draft version first; the original stays in effect until then
       )))`;
 }
 

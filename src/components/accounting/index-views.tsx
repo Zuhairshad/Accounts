@@ -169,10 +169,11 @@ export async function OpeningIndex(screen: Screen) {
   ]);
   const byTarget = new Map(opening.map((row) => [row.targetId, row]));
   const target = first(query.target);
-  const today = karachiToday();
+  // New openings default to the date of the existing ones (the imported openings), not today.
+  const today = opening.map((row) => row.date).sort()[0] ?? karachiToday();
   const canPost = has(screen, "post") && (has(screen, "edit") || has(screen, "create"));
   const rows = [
-    ...heads.filter((head) => !["receivable","payable"].includes(head.control ?? "") &&
+    ...heads.filter((head) => !["receivable","payable","inventory"].includes(head.control ?? "") &&
       head.id !== (settings.openingOffsetId ?? heads.find((account) => account.control === "opening_equity")?.id))
       .map((head) => ({ id: head.id, name: `${head.code} · ${head.name}`, active: head.active, type: head.type, kind: "account" as const })),
     ...partyRows.map((party) => ({ id: party.id, name: party.name, active: party.active, type: party.type, kind: "party" as const })),
@@ -186,6 +187,9 @@ export async function OpeningIndex(screen: Screen) {
         <div className="table-scroll acc-sheet"><table className="entry-table acc-grid acc-opening-grid"><thead><tr><th>Apply</th><th>Account or party</th><th>Opening date</th><th>Direction</th><th className="acc-num">Amount (PKR)</th></tr></thead>
           <tbody>{rows.map((row) => {
             const saved = byTarget.get(row.id);
+            if (saved?.imported) return <tr key={row.id} className="acc-row-muted"><td className="acc-grid-check" />
+              <td><span className="acc-grid-name">{row.name}</span><small className="muted block">Imported opening · <Link href={`${base}/vouchers/${saved.id}`}>{saved.imported}</Link> · revise that voucher to change it</small></td>
+              <td>{displayDate(saved.date)}</td><td className="capitalize">{saved.direction}</td><td className="acc-num">{saved.amount}</td></tr>;
             return <tr key={row.id} className={row.active ? undefined : "acc-row-muted"}><td className="acc-grid-check">
               <input type="hidden" name={`kind.${row.id}`} value={row.kind} />
               <input type="hidden" name={`version.${row.id}`} value={saved?.version ?? 0} />

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { displayDate } from "@/lib/validation";
+import { displayDate, karachiToday } from "@/lib/validation";
 import { Exact } from "@/lib/engine/model";
 import { invoiceOutstanding } from "@/lib/engine/settlement";
 import { inventorySummary, stockLedger } from "@/lib/trade/read";
@@ -126,15 +126,21 @@ export async function partiesReport(db:Reader,companies:Named[],f:ReportFilter,k
 }
 
 export async function agingReport(db:Reader,id:string,f:ReportFilter):Promise<Parts> {
-  const data = (await invoiceOutstanding(db,id,f.to,f.party)).filter((row)=>new Exact(row.outstanding).gt(0) &&
+  // Age as of today at the latest: a future period end would show invoices overdue that are not due yet.
+  const asOf = f.to > karachiToday() ? karachiToday() : f.to;
+  const data = (await invoiceOutstanding(db,id,asOf,f.party)).filter((row)=>new Exact(row.outstanding).gt(0) &&
     match(`${row.number} ${row.party}`,f.search) && (!f.classification || f.classification===(row.type==="sale" ? "customer" : "supplier")));
   const bucket = (days:number) => days===0 ? "Current" : days<=30 ? "1–30 days" : days<=60 ? "31–60 days" : days<=90 ? "61–90 days" : "Over 90 days";
   const rows:ReportRow[] = data.map((r)=>({key:r.id,cells:[textCell(r.number,bill(id,r.id)),textCell(r.party,ledger(id,r.partyId,f)),
     textCell(r.type),dateCell(r.date),dateCell(r.dueOn),moneyCell(r.invoiceAmount),moneyCell(r.embeddedSettlement),moneyCell(r.creditNotes),
     moneyCell(r.allocated),moneyCell(r.outstanding,bill(id,r.id)),integerCell(r.overdueDays),textCell(bucket(r.overdueDays))]}));
-  if (rows.length) rows.push({key:"total",style:"total",cells:[textCell("Outstanding total"),...Array<Cell>(8).fill(textCell("")),moneyCell(sum(data,(r)=>r.outstanding))]});
+  // Receivables and payables are totalled separately; adding them together means nothing.
+  for (const [label,side] of [["Receivable total (sales)","sale"],["Payable total (purchases)","purchase"]] as const) {
+    const part = data.filter((r)=>r.type.startsWith(side));
+    if (part.length) rows.push({key:`total-${side}`,style:"total",cells:[textCell(label),...Array<Cell>(8).fill(textCell("")),moneyCell(sum(part,(r)=>r.outstanding))]});
+  }
   return {columns:["Invoice","Party","Type","Invoice date","Due date","Invoice amount","Invoice settlement","Credit notes","Allocated","Outstanding","Days overdue","Age band"],rows,
-    notes:[`Outstanding invoices as of ${f.to}. Party totals may include advances and non-invoice transactions.`]};
+    notes:[`Outstanding invoices as of ${asOf}. Party totals may include advances and non-invoice transactions.`]};
 }
 
 export async function inventoryReport(db:Reader,id:string,f:ReportFilter,kind:ReportId):Promise<Parts> {

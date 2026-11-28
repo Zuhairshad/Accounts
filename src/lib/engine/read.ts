@@ -52,6 +52,28 @@ export async function partyBalances(db: Reader, companyId: string, to: string) {
   return result.rows;
 }
 
+/**
+ * Openings imported from the desktop application: posted JVs numbered OPENING-ACCOUNT-n / OPENING-PARTY-n, one line per
+ * account or party against the opening equity offset. They are not opening documents, so the Opening balances screen
+ * shows them read-only and refuses a second opening for the same account or party.
+ */
+export async function importedOpenings(db: Reader, companyId: string) {
+  const result = await db.execute<{ documentId: string; number: string; date: string; targetId: string; net: string }>(sql`
+    SELECT e.document_id AS "documentId",e.number,e.accounting_date::text AS date,coalesce(l.party_id,l.account_id) AS "targetId",
+      sum(l.debit-l.credit)::text AS net
+    FROM effective_vouchers e JOIN journal_lines l ON l.company_id=e.company_id AND l.voucher_id=e.id
+    JOIN accounts a ON a.company_id=l.company_id AND a.id=l.account_id
+    LEFT JOIN voucher_documents d ON d.company_id=e.company_id AND d.id=e.document_id
+    WHERE e.company_id=${companyId} AND e.number ~ '^OPENING-(ACCOUNT|PARTY)-' AND d.source IS DISTINCT FROM 'opening'
+      AND a.control IS DISTINCT FROM 'opening_equity'
+    GROUP BY e.document_id,e.number,e.accounting_date,coalesce(l.party_id,l.account_id)
+  `);
+  return result.rows.map((row) => ({
+    id: row.documentId, targetId: row.targetId, version: 0, date: row.date, imported: row.number,
+    amount: new Exact(row.net).abs().toFixed(2), direction: new Exact(row.net).lt(0) ? "credit" as const : "debit" as const,
+  }));
+}
+
 export async function openingRows(db: Reader, companyId: string) {
   const docs = await db.select({
     id: voucherDocuments.id, partyId: voucherDocuments.openingPartyId, accountId: voucherDocuments.openingAccountId,
@@ -60,11 +82,12 @@ export async function openingRows(db: Reader, companyId: string) {
   }).from(voucherDocuments).leftJoin(journalLines,
     and(eq(journalLines.companyId, voucherDocuments.companyId), eq(journalLines.voucherId, voucherDocuments.currentVoucherId), eq(journalLines.lineNo, 1)))
     .where(and(eq(voucherDocuments.companyId, companyId), eq(voucherDocuments.source, "opening")));
-  return docs.map((doc) => ({
-    id: doc.id, targetId: doc.partyId ?? doc.accountId!, version: doc.version, date: doc.date,
+  const imported = await importedOpenings(db, companyId);
+  return [...docs.map((doc) => ({
+    id: doc.id, targetId: doc.partyId ?? doc.accountId!, version: doc.version, date: doc.date, imported: null as string | null,
     amount: doc.status === "void" ? "0.00" : new Exact(doc.debit ?? "0").plus(doc.credit ?? "0").toFixed(2),
     direction: new Exact(doc.credit ?? "0").gt(0) ? "credit" as const : "debit" as const,
-  }));
+  })), ...imported.filter((row) => !docs.some((doc) => doc.status !== "void" && (doc.partyId ?? doc.accountId) === row.targetId))];
 }
 
 export async function journalSelectors(db: Reader, companyId: string, date: string) {
@@ -74,13 +97,13 @@ export async function journalSelectors(db: Reader, companyId: string, date: stri
   ]);
   const controls = new Map(heads.map((account) => [account.control, account.id]));
   const options = heads.filter((account) => !["receivable", "payable"].includes(account.control ?? "")).map((account) => ({
-    key: account.id, accountId: account.id, partyId: null as string | null, label: `${account.code} · ${account.name}`,
-    active: account.active, liquidity: account.liquidity, control: account.control, balance: null as string | null,
+    key: account.id, accountId: account.id, partyId: null as string | null, partyType: null as "customer" | "supplier" | null,
+    label: `${account.code} · ${account.name}`, active: account.active, liquidity: account.liquidity, control: account.control, balance: null as string | null,
   }));
   for (const party of balances) {
     const accountId = controls.get(party.type === "customer" ? "receivable" : "payable");
     if (accountId) options.push({
-      accountId, key: `${accountId}:${party.id}`, partyId: party.id, label: `${party.name} · ${party.type}`,
+      accountId, key: `${accountId}:${party.id}`, partyId: party.id, partyType: party.type, label: `${party.name} · ${party.type}`,
       active: party.active, liquidity: null, control: null, balance: party.balance,
     });
   }

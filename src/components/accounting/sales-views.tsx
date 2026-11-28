@@ -89,7 +89,7 @@ export async function ReceiptEntry(screen: Screen) {
     db.execute<{ id: string; date: string; number: string; type: string; party: string; amount: string; executive: string | null }>(sql`
       SELECT e.document_id AS id,e.accounting_date::text AS date,e.number,e.type,string_agg(DISTINCT p.name,', ') AS party,
         coalesce(sum(l.credit-l.debit) FILTER (WHERE l.party_id IS NOT NULL),0)::text AS amount,x.name AS executive
-      FROM effective_vouchers e JOIN voucher_documents d ON d.company_id=e.company_id AND d.id=e.document_id
+      FROM effective_vouchers e LEFT JOIN voucher_documents d ON d.company_id=e.company_id AND d.id=e.document_id
       JOIN journal_lines l ON l.company_id=e.company_id AND l.voucher_id=e.id
       LEFT JOIN parties p ON p.company_id=l.company_id AND p.id=l.party_id
       LEFT JOIN sales_executives x ON x.company_id=d.company_id AND x.id=d.sales_executive_id

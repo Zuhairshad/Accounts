@@ -267,6 +267,17 @@ th button { display: inline-flex; gap: .5rem; align-items: center; }
 .period-badge small { color: var(--muted); font-weight: 500; margin-left: .3rem; }
 .period-closed { border-color: #f0b8b3; color: #8f1d16; }
 .line-find { display: block; width: 100%; min-width: 9rem; margin-bottom: .3rem; border: 1px dashed #d1d5db; border-radius: .4rem; padding: .25rem .45rem; font-size: .82rem; }
+/* Search-as-you-type picker (components/ui/search-select.tsx) */
+.search-select { position: relative; min-width: 9rem; }
+.search-select-input { width: 100%; padding-right: 1.6rem; text-overflow: ellipsis; background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right .4rem center; }
+.search-select-input:not(.has-value)::placeholder { color: #9ca3af; }
+.search-select-list { position: fixed; z-index: 60; max-height: 17rem; overflow-y: auto; margin: 0; padding: .3rem; list-style: none; background: #fff; border: 1px solid var(--line); border-radius: .55rem; box-shadow: 0 12px 28px #1118271f, 0 2px 6px #11182714; font-size: .84rem; }
+.search-select-group { padding: .45rem .55rem .2rem; font-size: .68rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.search-select-option { display: flex; align-items: baseline; justify-content: space-between; gap: .75rem; padding: .4rem .55rem; border-radius: .4rem; cursor: pointer; color: var(--ink); }
+.search-select-option small { flex: none; font-size: .7rem; color: var(--muted); }
+.search-select-option[aria-selected="true"] { background: var(--green-soft); }
+.search-select-option.is-chosen { font-weight: 650; }
+.search-select-empty, .search-select-more { padding: .5rem .55rem; color: var(--muted); font-size: .78rem; }
 .shortcut-dialog table { width: 100%; }
 .shortcut-dialog th { text-align: left; white-space: nowrap; width: 7rem; }
 kbd { font: 600 .8rem ui-monospace, monospace; background: #f3f4f6; border: 1px solid #dfe2e7; border-radius: .3rem; padding: .05rem .35rem; }
@@ -277,7 +288,7 @@ kbd { font: 600 .8rem ui-monospace, monospace; background: #f3f4f6; border: 1px 
   .company-select { flex: 1 1 8rem; }
   .shortcut-button { display: none; }
 }
-@media print { .period-badge, .line-find { display: none; } }
+@media print { .period-badge, .line-find, .search-select-list { display: none; } }
 
 /* ───────────── Dashboard ───────────── */
 .dash { display: grid; gap: 1rem; }

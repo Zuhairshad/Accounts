@@ -65,7 +65,8 @@ export const adjustmentSchema = z.object({
 export type AdjustmentInput = z.infer<typeof adjustmentSchema>;
 
 export const itemSchema = z.object({
-  sku: z.string().trim().min(1, "Enter an item code.").max(80),
+  // Optional: items imported from the desktop application have no code.
+  sku: z.string().trim().max(80).transform((value) => value || null),
   name: z.string().trim().min(1, "Enter an item name.").max(160),
   unit: z.string().trim().min(1, "Enter a unit of measure.").max(40),
   description: text, category: z.string().trim().max(100), kind: z.enum(["stock", "service"]),

@@ -64,15 +64,16 @@ test("keyboard entry, account search, period display and reconciliation work in 
   await page.keyboard.press("v");
   await expect(page).toHaveURL(new RegExp(`/workspace/${companyId}/accounting/vouchers/new$`));
   await page.getByLabel("Accounting date").fill(today);
-  await page.getByRole("searchbox", { name: "Find account or party line 1" }).fill("cash");
-  await page.getByRole("searchbox", { name: "Find account or party line 1" }).press("Enter");
+  await page.getByRole("combobox", { name: "Account or party line 1" }).fill("cash");
+  await page.getByRole("combobox", { name: "Account or party line 1" }).press("Enter");
   await expect(page.getByLabel("Amount line 1")).toBeFocused();
-  await expect(page.getByRole("combobox", { name: "Account or party line 1" }).locator("option:checked")).toHaveText(/Cash/);
+  await expect(page.getByRole("combobox", { name: "Account or party line 1" })).toHaveValue(/Cash/);
   await page.getByLabel("Amount line 1").fill("750.25");
   await page.getByLabel("Amount line 1").press("Enter");
   await expect(page).toHaveURL(/vouchers\/new$/); // Enter advanced focus instead of submitting
-  await page.getByRole("searchbox", { name: "Find account or party line 2" }).fill("other inc");
-  await page.getByRole("searchbox", { name: "Find account or party line 2" }).press("Enter");
+  await page.getByRole("combobox", { name: "Account or party line 2" }).fill("othr incme"); // typos still find Other Income
+  await page.getByRole("combobox", { name: "Account or party line 2" }).press("Enter");
+  await expect(page.getByRole("combobox", { name: "Account or party line 2" })).toHaveValue(/Other Income/);
   await page.getByLabel("Amount line 2").fill("750.25");
   await page.getByRole("button", { name: "Post voucher", exact: true }).click();
   await expect(page).toHaveURL(/\/vouchers\/[0-9a-f-]+$/, { timeout: 15000 });

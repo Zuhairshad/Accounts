@@ -19,5 +19,5 @@ export default async function AccountingSection({ params, searchParams }: {
     "sales-executives": () => SalesExecutiveIndex(screen), receipts: () => ReceiptEntry(screen),
   };
   if (!Object.hasOwn(views, section)) notFound();
-  return <div className="page-stack">{await views[section]()}</div>;
+  return <div className="page-stack acc-page">{await views[section]()}</div>;
 }

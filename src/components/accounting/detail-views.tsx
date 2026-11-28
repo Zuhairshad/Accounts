@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, eq, sql } from "drizzle-orm";
-import { Copy, Download, Printer } from "lucide-react";
+import {
+  ArrowLeft, Ban, BookOpen, CheckCircle2, FileText, Wallet, Copy, Download, History, Link2, Pencil, Printer, RotateCcw, Send, ShieldCheck,
+} from "lucide-react";
 import { getDb } from "@/db";
 import { accounts, companySettings, parties, salesExecutives } from "@/db/schema";
 import {
@@ -16,7 +18,8 @@ import { displayDate, karachiToday } from "@/lib/validation";
 import { VoucherEditor } from "./entry-form";
 import { AccountForm, PartyForm } from "./master-forms";
 import { FinanceForm } from "./finance-form";
-import { DateFilters, Ledger, Money, PageHeading, PanelTable, sided } from "./finance-ui";
+import { Ledger, PageHeading, sided } from "./finance-ui";
+import { AccCard, AccFilters, AccTable, Num, SidedFigure, StatCard, StatusPill, voucherTypes } from "./acc-ui";
 import { InvoiceAging, type Screen } from "./index-views";
 import { Button } from "../ui/button";
 
@@ -47,13 +50,12 @@ export async function VoucherEntry(screen: Screen, id?: string, copyId?: string)
   if (!id && (!permissions.includes("create") || (copyId && (!entry || source?.readOnlyOrigin)))) notFound();
   return <>
     <PageHeading title={id ? "Edit voucher" : copyId ? "Duplicate as new voucher" : "New voucher"} company={companyName}
+      subtitle={id ? `Changing ${source?.number ?? "a draft voucher"}` : "Enter a balanced journal: total debits must equal total credits"}
       toolbar={<Button asChild variant="outline"><Link href={id ? `${base}/vouchers/${id}` : `${base}/vouchers`}>Cancel</Link></Button>} />
-    <section className="panel">
-      <VoucherEditor companyId={companyId} base={base} options={options} version={id ? source!.version : 0} id={id}
-        entry={entry ? { ...entry, date: copyId ? karachiToday() : entry.date } : {
-          type: "JV", date: karachiToday(), reference: "", narration: "", mode: "party", lines: [],
-        }} approval={settings.voucherApproval} canPost={permissions.includes("post")} isPosted={!!id && source?.status === "posted"} />
-    </section>
+    <VoucherEditor companyId={companyId} base={base} options={options} version={id ? source!.version : 0} id={id}
+      entry={entry ? { ...entry, date: copyId ? karachiToday() : entry.date } : {
+        type: "JV", date: karachiToday(), reference: "", narration: "", mode: "party", lines: [],
+      }} approval={settings.voucherApproval} canPost={permissions.includes("post")} isPosted={!!id && source?.status === "posted"} />
   </>;
 }
 
@@ -89,67 +91,84 @@ export async function VoucherDetail(screen: Screen, voucher: ViewVoucher) {
   const needsRepair = repairable
     ? voucher.postedLines.filter((line) => ["receivable","payable"].includes(line.control ?? "") && !line.partyId) : [];
   const pdf = `/api/accounting/${companyId}/vouchers/${id}`;
+  const statusText = status === "void" ? "Voided" : status === "draft" && voucher.doc?.submittedBy ? "Awaiting approval" : status;
+  const showSubmit = settings.voucherApproval && status === "draft" && !voucher.doc?.submittedBy && permissions.includes("edit");
+  const actions = canPost || canVoid || canRestore || (managed && showSubmit);
+  const repair = needsRepair.length > 0 && permissions.includes("edit") && permissions.includes("post") && approvalRight;
   return <>
-    <PageHeading title={number ?? `${type} draft`} company={companyName} toolbar={<>
-      <Button variant="outline" asChild><Link href={`${base}/vouchers`}>Voucher register</Link></Button>
+    <PageHeading title={number ?? `${type} draft`} company={companyName} subtitle={`${voucherTypes[type] ?? type} · ${displayDate(date)}`} toolbar={<>
+      <Button variant="outline" asChild><Link href={`${base}/vouchers`}><ArrowLeft size={16} /> Voucher register</Link></Button>
       {voucher.doc?.sourceId && ["invoice","inventory_adjustment"].includes(voucher.doc.source) &&
         <Button variant="outline" asChild><Link href={`/workspace/${companyId}/trade/${voucher.doc.source === "invoice" ? "invoices" : "adjustments"}/${voucher.doc.sourceId}`}>Originating document</Link></Button>}
-      {canEdit && <Button variant="outline" asChild><a href={`${base}/vouchers/${id}?edit=1`}>Edit voucher</a></Button>}
       {entry && !voucher.readOnlyOrigin && permissions.includes("create") &&
         <Button variant="outline" asChild><a href={`${base}/vouchers/new?copy=${id}`}><Copy size={16} /> Duplicate as new</a></Button>}
       {permissions.includes("print") && <Button variant="outline" asChild><a href={`${pdf}?inline=1`} target="_blank" rel="noreferrer"><Printer size={16} /> Print voucher</a></Button>}
       {permissions.includes("export") && <Button variant="outline" asChild><a href={pdf}><Download size={16} /> Download PDF</a></Button>}
+      {canEdit && <Button asChild><a href={`${base}/vouchers/${id}?edit=1`}><Pencil size={16} /> Edit voucher</a></Button>}
     </>} />
-    <section className="panel"><dl className="finance-detail">
-      <div><dt>Accounting date</dt><dd>{displayDate(date)}</dd></div>
-      <div><dt>Voucher type</dt><dd>{type}</dd></div>
-      <div><dt>Status</dt><dd className="capitalize">{status === "void" ? "Voided" : status === "draft" && voucher.doc?.submittedBy ? "Awaiting approval" : status}</dd></div>
-      <div><dt>Reference</dt><dd>{voucher.reference || "—"}</dd></div>
-      {executive && <div><dt>Sales executive</dt><dd>{executive.name}</dd></div>}
-      <div><dt>Narration</dt><dd>{entry?.narration || voucher.narration || "—"}</dd></div>
-    </dl></section>
-    <PanelTable title="Journal lines" headers={["Account","Party","Description","Debit (PKR)","Credit (PKR)","Current party balance"]}
-      empty={!lines.length ? "No lines entered" : undefined}>
+    <section className="panel acc-summary">
+      <dl className="acc-facts">
+        <div><dt>Accounting date</dt><dd>{displayDate(date)}</dd></div>
+        <div><dt>Voucher type</dt><dd>{type}<small>{voucherTypes[type] ?? ""}</small></dd></div>
+        <div><dt>Status</dt><dd><StatusPill status={statusText} className="capitalize" /></dd></div>
+        <div><dt>Reference</dt><dd>{voucher.reference || "—"}</dd></div>
+        {executive && <div><dt>Sales executive</dt><dd>{executive.name}</dd></div>}
+        <div className="acc-fact-wide"><dt>Narration</dt><dd>{entry?.narration || voucher.narration || "—"}</dd></div>
+      </dl>
+      <div className="acc-summary-total"><span>Voucher total (PKR)</span><strong>{formatMoney(total("debit"))}</strong>
+        <small>{lines.length} {lines.length === 1 ? "line" : "lines"}</small></div>
+    </section>
+    <AccTable title="Journal lines" subtitle="Debits and credits posted by this voucher"
+      headers={["Account","Party","Description",{ label: "Debit (PKR)", num: true },{ label: "Credit (PKR)", num: true },{ label: "Current party balance", num: true }]}
+      empty={!lines.length ? "No lines entered" : undefined}
+      foot={<tr className="acc-total-row"><td colSpan={3}><strong>Totals</strong></td><Num value={total("debit")} strong /><Num value={total("credit")} strong /><td /></tr>}>
       {lines.map((line, index) => {
         const option = options.find((item) => item.accountId === line.accountId && item.partyId === line.partyId);
         const party = current.find((candidate) => candidate.id === line.partyId);
-        return <tr key={index}><td>{line.account ?? option?.label ?? "Account"}</td><td>{line.party ?? party?.name ?? "—"}</td><td>{line.description || "—"}</td>
-          <Money value={line.debit} /><Money value={line.credit} /><td>{party ? sided(party.balance) : "—"}</td></tr>;
+        const zero = (value: string) => new Exact(value).isZero();
+        return <tr key={index}><td><strong>{line.account ?? option?.label ?? "Account"}</strong></td><td>{line.party ?? party?.name ?? <span className="muted">—</span>}</td>
+          <td>{line.description || <span className="muted">—</span>}</td>
+          <td className={`acc-num${zero(line.debit) ? " acc-zero" : ""}`}>{formatMoney(line.debit)}</td>
+          <td className={`acc-num${zero(line.credit) ? " acc-zero" : ""}`}>{formatMoney(line.credit)}</td>
+          <td className="acc-num">{party ? <SidedFigure value={sided(party.balance)} /> : <span className="muted">—</span>}</td></tr>;
       })}
-      <tr><td colSpan={3}><strong>Totals</strong></td><Money value={total("debit")} /><Money value={total("credit")} /><td /></tr>
-    </PanelTable>
-    {(canPost || canVoid || canRestore || (managed && status === "draft" && !voucher.doc?.submittedBy && settings.voucherApproval && permissions.includes("edit"))) &&
-      <section className="panel print-hide"><h2>Transaction actions</h2>
-        {settings.voucherApproval && status === "draft" && !voucher.doc?.submittedBy && permissions.includes("edit") && <Transition screen={screen} id={id} version={version} operation="submit" label="Submit for approval" />}
-        {canPost && <Transition screen={screen} id={id} version={version} operation="post" label={settings.voucherApproval ? "Approve and post" : "Post voucher"} />}
-        {canVoid && <Transition screen={screen} id={id} version={version} operation="delete" label="Void voucher" />}
-        {canRestore && <Transition screen={screen} id={id} version={version} operation="restore" label="Restore voucher" />}
-      </section>}
-    {needsRepair.length > 0 && permissions.includes("edit") && permissions.includes("post") && approvalRight &&
-      <section className="panel print-hide"><h2>Link existing party voucher</h2>
-        <p className="muted mt-2">Confirm the party for each unlinked control line using the original paperwork. The journal amounts and document number stay the same.</p>
-        <FinanceForm action={repairPartyAction} companyId={companyId} submit={[{ label: "Confirm and link parties" }]}>
-          <input type="hidden" name="voucherId" value={id} />
-          <div className="form-grid mt-4">
-            {needsRepair.map((line) => <label className="field" key={line.id}>{line.account} · line {line.lineNo}
-              <select name="repair" required defaultValue=""><option value="">Choose a party</option>
-                {current.filter((party) => party.active && party.type === (line.control === "receivable" ? "customer" : "supplier"))
-                  .map((party) => <option key={party.id} value={`${line.lineNo}:${party.id}`}>{party.name}</option>)}
-              </select></label>)}
-            <label className="field">Evidence or reason<input name="reason" required minLength={3} maxLength={500} /></label>
-            <label className="flex items-center gap-2"><input type="checkbox" name="confirmed" value="true" required /> I verified the selected parties against source evidence</label>
+    </AccTable>
+    <div className={`acc-detail-grid${actions || repair ? "" : " acc-detail-single"}`}>
+      {(actions || repair) && <div className="acc-detail-side">
+        {actions && <AccCard title="Transaction actions" subtitle="Every change asks for a reason and is kept in the history" className="print-hide" icon={<ShieldCheck size={18} />}>
+          <div className="acc-actions">
+            {showSubmit && <Transition screen={screen} id={id} version={version} operation="submit" label="Submit for approval" />}
+            {canPost && <Transition screen={screen} id={id} version={version} operation="post" label={settings.voucherApproval ? "Approve and post" : "Post voucher"} />}
+            {canVoid && <Transition screen={screen} id={id} version={version} operation="delete" label="Void voucher" />}
+            {canRestore && <Transition screen={screen} id={id} version={version} operation="restore" label="Restore voucher" />}
           </div>
-        </FinanceForm>
-      </section>}
-    <section className="panel print-hide"><h2>Transaction history</h2>
-      {history.rows.length ? history.rows.map((item) => <details className="finance-history" key={item.id}>
-        <summary>{item.reason} · {item.actor} · {displayDate(item.date.slice(0, 10))} {item.date.slice(11, 16)}</summary>
-        <div className="form-grid mt-3">
-          <div><strong>Before</strong><HistorySummary value={item.previous} /></div>
-          <div><strong>After</strong><HistorySummary value={item.next} /></div>
-        </div>
-      </details>) : <p className="muted mt-2">No recorded changes.</p>}
-    </section>
+        </AccCard>}
+        {repair && <AccCard title="Link existing party voucher" className="print-hide" icon={<Link2 size={18} />}
+          subtitle="Confirm the party for each unlinked control line using the original paperwork. The journal amounts and document number stay the same.">
+          <FinanceForm action={repairPartyAction} companyId={companyId} submit={[{ label: "Confirm and link parties" }]}>
+            <input type="hidden" name="voucherId" value={id} />
+            <div className="form-grid acc-form-grid">
+              {needsRepair.map((line) => <label className="field" key={line.id}>{line.account} · line {line.lineNo}
+                <select name="repair" required defaultValue=""><option value="">Choose a party</option>
+                  {current.filter((party) => party.active && party.type === (line.control === "receivable" ? "customer" : "supplier"))
+                    .map((party) => <option key={party.id} value={`${line.lineNo}:${party.id}`}>{party.name}</option>)}
+                </select></label>)}
+              <label className="field">Evidence or reason<input name="reason" required minLength={3} maxLength={500} /></label>
+              <label className="acc-check field-wide"><input type="checkbox" name="confirmed" value="true" required /> I verified the selected parties against source evidence</label>
+            </div>
+          </FinanceForm>
+        </AccCard>}
+      </div>}
+      <AccCard title="Transaction history" subtitle={`${history.rows.length} recorded ${history.rows.length === 1 ? "change" : "changes"}`} className="print-hide" icon={<History size={18} />}>
+        {history.rows.length ? <ol className="acc-timeline">{history.rows.map((item) => <li key={item.id}><details className="finance-history acc-history">
+          <summary>{item.reason} · {item.actor} · {displayDate(item.date.slice(0, 10))} {item.date.slice(11, 16)}</summary>
+          <div className="acc-history-diff">
+            <div><strong>Before</strong><HistorySummary value={item.previous} /></div>
+            <div><strong>After</strong><HistorySummary value={item.next} /></div>
+          </div>
+        </details></li>)}</ol> : <div className="table-empty acc-empty acc-empty-flat"><History size={20} aria-hidden /><strong>No recorded changes.</strong></div>}
+      </AccCard>
+    </div>
   </>;
 }
 
@@ -174,11 +193,12 @@ function HistorySummary({ value }: { value: unknown }) {
 function Transition({ screen, id, version, operation, label }: {
   screen: Screen; id: string; version: number; operation: "post" | "submit" | "delete" | "restore"; label: string;
 }) {
-  return <details className="finance-history"><summary>{label}</summary>
+  const Icon = { post: CheckCircle2, submit: Send, delete: Ban, restore: RotateCcw }[operation];
+  return <details className={`acc-action acc-action-${operation}`}><summary><span className="acc-action-icon" aria-hidden><Icon size={16} /></span>{label}</summary>
     <FinanceForm action={transitionVoucherAction} companyId={screen.companyId} id={id} version={version}
       submit={[{ label: `Confirm ${label.toLowerCase()}`, variant: operation === "delete" ? "danger" : "outline" }]}>
       <input type="hidden" name="operation" value={operation} />
-      <label className="field mt-2">Reason<input name="reason" required minLength={3} maxLength={500} /></label>
+      <label className="field">Reason<input name="reason" required minLength={3} maxLength={500} /></label>
     </FinanceForm>
   </details>;
 }
@@ -189,16 +209,18 @@ export async function AccountDetail(screen: Screen, id?: string) {
   const account = rows.find((row) => row.id === id);
   if (id && !account || !id && !permissions.includes("create")) notFound();
   return <>
-    <PageHeading title={account ? `${account.code} · ${account.name}` : "Add account"} company={companyName} toolbar={account && <>
-      <Button variant="outline" asChild><Link href={`${base}/ledger/${account.id}`}>View account ledger</Link></Button>
-      {!["receivable", "payable", "opening_equity"].includes(account.control ?? "") && <Button variant="outline" asChild><a href={`${base}/opening?target=${account.id}`}>Opening balance</a></Button>}
+    <PageHeading title={account ? `${account.code} · ${account.name}` : "Add account"} company={companyName}
+      subtitle={account ? <><span className={`acc-class acc-class-${account.type}`}>{account.type}</span> account head</> : "Create an account head in the chart of accounts"} toolbar={<>
+      <Button variant="outline" asChild><Link href={`${base}/chart`}><ArrowLeft size={16} /> Chart of accounts</Link></Button>
+      {account && <Button variant="outline" asChild><Link href={`${base}/ledger/${account.id}`}>View account ledger</Link></Button>}
+      {account && !["receivable", "payable", "opening_equity"].includes(account.control ?? "") && <Button variant="outline" asChild><a href={`${base}/opening?target=${account.id}`}>Opening balance</a></Button>}
     </>} />
-    <section className="panel">
+    <AccCard title="Account details" subtitle="Code, name, classification and where the head sits in the chart" icon={<BookOpen size={18} />}>
       {permissions.includes(id ? "edit" : "create") ? <AccountForm companyId={companyId} account={account} heads={rows} base={base} /> :
-        <dl className="finance-detail"><div><dt>Classification</dt><dd className="capitalize">{account?.type}</dd></div>
+        <dl className="acc-facts"><div><dt>Classification</dt><dd className="capitalize">{account?.type}</dd></div>
           <div><dt>Status</dt><dd>{account?.active ? "Active" : "Inactive"}</dd></div>
           <div><dt>Parent account</dt><dd>{rows.find((row) => row.id === account?.parentId)?.name ?? "Main head"}</dd></div></dl>}
-    </section>
+    </AccCard>
   </>;
 }
 
@@ -211,14 +233,16 @@ export async function PartyDetail(screen: Screen, id?: string) {
   ]);
   if (id && !party || !id && !permissions.includes("create")) notFound();
   return <>
-    <PageHeading title={party?.name ?? "Add party"} company={companyName} toolbar={id && <>
-      <Button asChild variant="outline"><Link href={`${base}/party-ledger/${id}`}>View party ledger</Link></Button>
-      <Button asChild variant="outline"><Link href={`${base}/allocations/${id}`}>Payments and allocations</Link></Button>
+    <PageHeading title={party?.name ?? "Add party"} company={companyName}
+      subtitle={party ? <><span className={`acc-class acc-class-${party.type}`}>{party.type}</span> {party.active ? "active party" : "inactive party"}</> : "Create a customer or supplier"} toolbar={<>
+      <Button asChild variant="outline"><Link href={`${base}/parties`}><ArrowLeft size={16} /> Party master</Link></Button>
+      {id && <Button asChild variant="outline"><Link href={`${base}/party-ledger/${id}`}>View party ledger</Link></Button>}
+      {id && <Button asChild variant="outline"><Link href={`${base}/allocations/${id}`}>Payments and allocations</Link></Button>}
     </>} />
-    <section className="panel">
+    <section className="panel acc-card acc-form-card">
       {permissions.includes(id ? "edit" : "create") ? <PartyForm companyId={companyId} base={base} party={party}
         opening={opening.find((row) => row.targetId === id)} today={karachiToday()} canPost={permissions.includes("post")} /> :
-        <dl className="finance-detail">{[
+        <dl className="acc-facts">{[
           ["Classification", party?.type], ["Contact person", party?.contact], ["Phone", party?.phone], ["Email", party?.email],
           ["Billing address", party?.address], ["NTN", party?.ntn], ["STRN", party?.strn], ["Credit terms", `${party?.creditDays} days`],
           ["Credit limit (PKR)", party?.creditLimit], ["Status", party?.active ? "Active" : "Inactive"], ["Notes", party?.notes],
@@ -237,11 +261,12 @@ export async function LedgerDetail(screen: Screen, id: string, kind: "account" |
   const range = resolveRange(query);
   const result = await readLedger(db, companyId, kind === "account" ? { accountId: id } : { partyId: id }, range.from, range.to);
   return <>
-    <PageHeading title={head.name} company={companyName} toolbar={<>
+    <PageHeading title={head.name} company={companyName}
+      subtitle="Posted entries with a running balance" toolbar={<>
       <Button asChild variant="outline"><Link href={`${base}/${kind === "account" ? "chart" : "parties"}/${head.id}`}>{kind === "account" ? "Account details" : "Party details"}</Link></Button>
       {kind === "party" && <Button asChild variant="outline"><Link href={`${base}/allocations/${id}`}>Payments and allocations</Link></Button>}
     </>} />
-    <DateFilters query={query} dateLabel={kind === "account" ? "Account ledger" : `${head.type === "customer" ? "Customer" : "Supplier"} ledger`} />
+    <AccFilters query={query} dateLabel={kind === "account" ? "Account ledger" : `${head.type === "customer" ? "Customer" : "Supplier"} ledger`} />
     <Ledger result={result} base={base} from={range.from} to={range.to} />
   </>;
 }
@@ -261,22 +286,32 @@ export async function PartySettlement(screen: Screen, id: string) {
   const available = sources.filter((row) => new Exact(row.unallocated).gt(0));
   const outstanding = invoices.filter((row) => new Exact(row.outstanding).gt(0));
   const canPost = permissions.includes("post");
+  const unallocated = available.reduce((sum, row) => sum.plus(row.unallocated), new Exact(0)).toFixed(2);
+  const due = outstanding.reduce((sum, row) => sum.plus(row.outstanding), new Exact(0)).toFixed(2);
   return <>
-    <PageHeading title={`${party.name} · Payments and allocations`} company={companyName} toolbar={
+    <PageHeading title={`${party.name} · Payments and allocations`} company={companyName} subtitle="Match posted payments and advances to open invoices" toolbar={
       <Button variant="outline" asChild><Link href={`${base}/party-ledger/${id}`}>View party ledger</Link></Button>} />
-    <DateFilters query={query} asOf={asOf} />
-    <PanelTable title="Posted payments, credits and advances" headers={["Date","Voucher","Amount (PKR)","Allocated","Unallocated"]}
+    <AccFilters query={query} asOf={asOf} />
+    <section className="stat-row acc-stat-row" aria-label="Allocation summary">
+      <StatCard icon={<Wallet size={20} />} title="Available to allocate" subtitle={`${available.length} ${available.length === 1 ? "payment" : "payments"} with an unallocated amount`}
+        value={<><small className="acc-unit">PKR </small>{formatMoney(unallocated)}</>} />
+      <StatCard icon={<FileText size={20} />} tone="red" title="Outstanding invoices" subtitle={`${outstanding.length} open ${outstanding.length === 1 ? "invoice" : "invoices"}`}
+        value={<><small className="acc-unit">PKR </small>{formatMoney(due)}</>} />
+      <StatCard icon={<Link2 size={20} />} tone="blue" title="Active allocations" subtitle="Payments already matched to invoices" value={active.length} />
+    </section>
+    <AccTable title="Posted payments, credits and advances" subtitle={`As of ${displayDate(asOf)}`}
+      headers={["Voucher","Date",...["Amount (PKR)","Allocated","Unallocated"].map((label) => ({ label, num: true }))]}
       empty={!sources.length ? "No eligible posted payments or advances" : undefined}>
-      {sources.map((row) => <tr key={row.id}><td>{displayDate(row.date)}</td>
-        <td><Link className="text-link" href={`${base}/vouchers/${row.documentId}`}>{row.number}</Link></td>
-        <Money value={row.amount} /><Money value={row.allocated} /><Money value={row.unallocated} /></tr>)}
-    </PanelTable>
+      {sources.map((row) => <tr key={row.id}>
+        <td><Link className="acc-strong-link" href={`${base}/vouchers/${row.documentId}`}>{row.number}</Link></td><td className="acc-nowrap">{displayDate(row.date)}</td>
+        <Num value={row.amount} /><Num value={row.allocated} /><Num value={row.unallocated} strong /></tr>)}
+    </AccTable>
     <InvoiceAging rows={invoices} />
-    {canPost && available.length > 0 && outstanding.length > 0 && <section className="panel"><h2>Allocate a payment</h2>
-      <p className="muted mt-2">FIFO applies by oldest invoice date, then invoice number. Any surplus stays unallocated.</p>
+    {canPost && available.length > 0 && outstanding.length > 0 && <AccCard title="Allocate a payment" icon={<Link2 size={18} />}
+      subtitle="FIFO applies by oldest invoice date, then invoice number. Any surplus stays unallocated.">
       <FinanceForm action={allocateAction} companyId={companyId} submit={[{ label: "Save allocation" }]}>
         <input type="hidden" name="partyId" value={id} />
-        <div className="form-grid mt-4">
+        <div className="form-grid acc-form-grid acc-cols-4">
           <label className="field">Payment or advance<select name="lineId" required defaultValue="">
             <option value="">Choose a payment</option>{available.map((row) => <option key={row.id} value={row.id}>{row.number} · PKR {formatMoney(row.unallocated)} available</option>)}
           </select></label>
@@ -287,17 +322,17 @@ export async function PartySettlement(screen: Screen, id: string) {
           <label className="field">Amount (PKR)<input name="amount" inputMode="decimal" maxLength={21} required /></label>
         </div>
       </FinanceForm>
-    </section>}
-    <PanelTable title="Current active allocations" headers={["Date","Payment","Invoice","Amount (PKR)","Action"]}
+    </AccCard>}
+    <AccTable title="Current active allocations" headers={["Date","Payment","Invoice",{ label: "Amount (PKR)", num: true },"Action"]}
       empty={!active.length ? "No active allocations" : undefined}>
-      {active.map((row) => <tr key={row.id}><td>{displayDate(row.date)}</td><td>{row.payment}</td><td>{row.invoice}</td><Money value={row.amount} />
-        <td>{canPost && permissions.includes("edit") ? <details><summary>Release allocation</summary>
+      {active.map((row) => <tr key={row.id}><td className="acc-nowrap">{displayDate(row.date)}</td><td><strong>{row.payment}</strong></td><td>{row.invoice}</td><Num value={row.amount} />
+        <td>{canPost && permissions.includes("edit") ? <details className="acc-inline-action"><summary>Release allocation</summary>
           <FinanceForm action={releaseAction} companyId={companyId} id={row.id} submit={[{ label: "Confirm release", variant: "outline" }]}>
             <input type="hidden" name="partyId" value={id} />
             <label className="field">Release date<input name="date" type="date" defaultValue={asOf} required /></label>
             <label className="field mt-2">Reason<input name="reason" required minLength={3} maxLength={500} /></label>
           </FinanceForm>
         </details> : "—"}</td></tr>)}
-    </PanelTable>
+    </AccTable>
   </>;
 }
